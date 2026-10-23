@@ -47,8 +47,9 @@ use std::time::Duration;
 use theme::ActiveTheme;
 use title_bar_settings::TitleBarSettings;
 use ui::{
-    Avatar, ButtonLike, ContextMenu, ContextMenuEntry, IconWithIndicator, Indicator, PopoverMenu,
-    PopoverMenuHandle, TintColor, Tooltip, prelude::*, utils::platform_title_bar_height,
+    Avatar, ButtonLike, ContextMenu, ContextMenuEntry, IconButton, IconWithIndicator, Indicator,
+    PopoverMenu, PopoverMenuHandle, TintColor, Tooltip, prelude::*,
+    utils::platform_title_bar_height,
 };
 use update_version::UpdateVersion;
 use util::ResultExt;
@@ -64,6 +65,9 @@ pub use onboarding_banner::restore_banner;
 const MAX_PROJECT_NAME_LENGTH: usize = 40;
 const MAX_BRANCH_NAME_LENGTH: usize = 40;
 const MAX_SHORT_SHA_LENGTH: usize = 8;
+const RUN_TASK_TAG: &str = "primary-run";
+const RESTART_TASK_TAG: &str = "primary-restart";
+const STOP_TASK_TAG: &str = "primary-stop";
 
 fn linked_worktree_name_anchor<'a>(
     main_worktree_path: Option<&'a Path>,
@@ -381,6 +385,7 @@ impl Render for TitleBar {
                 .pr_1()
                 .gap_1()
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .children(self.render_run_controls(cx))
                 .child(self.render_call_controls(window, cx))
                 .children(self.render_connection_status(status, cx))
                 .child(self.update_version.clone())
@@ -494,6 +499,16 @@ impl TitleBar {
             }),
         );
         subscriptions.push(cx.observe(&user_store, |_a, _, cx| cx.notify()));
+        subscriptions.push(cx.observe(&project, |_, _, cx| cx.notify()));
+        if let Some(inventory) = project
+            .read(cx)
+            .task_store()
+            .read(cx)
+            .task_inventory()
+            .cloned()
+        {
+            subscriptions.push(cx.observe(&inventory, |_, _, cx| cx.notify()));
+        }
         if let Some(workspace_entity) = workspace.weak_handle().upgrade() {
             subscriptions.push(cx.subscribe(
                 &workspace_entity,
@@ -607,6 +622,79 @@ impl TitleBar {
                 worktree_path == *repo_path || worktree_path.starts_with(repo_path.as_ref())
             })
             .count()
+    }
+
+    fn render_run_controls(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let worktree = self.effective_active_worktree(cx)?;
+        let worktree_id = worktree.read(cx).id();
+        let task_store = self.project.read(cx).task_store().read(cx);
+        let inventory = task_store.task_inventory()?.read(cx);
+        let running = [RUN_TASK_TAG, RESTART_TASK_TAG].into_iter().any(|tag| {
+            self.project
+                .read(cx)
+                .has_running_task_with_tag(worktree_id, tag, cx)
+        });
+        let can_restart = inventory.has_worktree_task_with_tag(worktree_id, RESTART_TASK_TAG);
+        let controls = [
+            (
+                if running && can_restart {
+                    RESTART_TASK_TAG
+                } else {
+                    RUN_TASK_TAG
+                },
+                if running {
+                    IconName::Rerun
+                } else {
+                    IconName::PlayFilled
+                },
+                Color::Success,
+                if running {
+                    "重新运行项目"
+                } else {
+                    "运行项目"
+                },
+                running && !can_restart,
+            ),
+            (
+                STOP_TASK_TAG,
+                IconName::Stop,
+                Color::Error,
+                "停止项目",
+                !running,
+            ),
+        ];
+        if !inventory.has_worktree_task_with_tag(worktree_id, RUN_TASK_TAG) {
+            return None;
+        }
+        Some(
+            h_flex()
+                .gap_1()
+                .children(
+                    controls
+                        .into_iter()
+                        .filter(|(tag, _, _, _, _)| {
+                            inventory.has_worktree_task_with_tag(worktree_id, tag)
+                        })
+                        .map(|(tag, icon, color, label, disabled)| {
+                            IconButton::new(tag, icon)
+                                .icon_size(IconSize::Small)
+                                .icon_color(color)
+                                .disabled(disabled)
+                                .tooltip(Tooltip::text(label))
+                                .on_click(move |_, window, cx| {
+                                    window.dispatch_action(
+                                        zed_actions::Spawn::ByTag {
+                                            task_tag: tag.into(),
+                                            reveal_target: None,
+                                        }
+                                        .boxed_clone(),
+                                        cx,
+                                    );
+                                })
+                        }),
+                )
+                .into_any_element(),
+        )
     }
 
     fn render_remote_project_connection(&self, cx: &mut Context<Self>) -> Option<AnyElement> {

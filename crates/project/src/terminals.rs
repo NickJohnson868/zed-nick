@@ -263,6 +263,20 @@ impl Project {
                     .local_handles
                     .push(terminal_handle.downgrade());
 
+                let mut running = true;
+                cx.observe(&terminal_handle, move |_, terminal, cx| {
+                    let current = terminal
+                        .read(cx)
+                        .task()
+                        .is_some_and(|task| task.status == terminal::TaskStatus::Running);
+                    if current != running {
+                        running = current;
+                        cx.notify();
+                    }
+                })
+                .detach();
+                cx.notify();
+
                 let id = terminal_handle.entity_id();
                 cx.observe_release(&terminal_handle, move |project, _terminal, cx| {
                     let handles = &mut project.terminals.local_handles;
@@ -614,6 +628,27 @@ impl Project {
 
     pub fn local_terminal_handles(&self) -> &Vec<WeakEntity<terminal::Terminal>> {
         &self.terminals.local_handles
+    }
+
+    pub fn has_running_task_with_tag(
+        &self,
+        worktree: worktree::WorktreeId,
+        tag: &str,
+        cx: &App,
+    ) -> bool {
+        let Some(inventory) = self.task_store.read(cx).task_inventory() else {
+            return false;
+        };
+        let inventory = inventory.read(cx);
+        self.terminals.local_handles.iter().any(|terminal| {
+            let Some(terminal) = terminal.upgrade() else {
+                return false;
+            };
+            terminal.read(cx).task().is_some_and(|task| {
+                task.status == terminal::TaskStatus::Running
+                    && inventory.scheduled_task_has_tag(worktree, &task.spawned_task.id, tag)
+            })
+        })
     }
 
     fn resolve_directory_environment(

@@ -3243,6 +3243,7 @@ impl Terminal {
                 task.status.register_terminal_exit();
             }
         };
+        cx.notify();
 
         let (finished_successfully, task_line, command_line) = task_summary(task, exit_status);
         let mut lines_to_show = Vec::new();

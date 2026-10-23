@@ -699,6 +699,31 @@ impl Inventory {
             .collect()
     }
 
+    pub fn has_worktree_task_with_tag(&self, worktree: WorktreeId, tag: &str) -> bool {
+        self.worktree_templates_from_settings(worktree)
+            .any(|(_, template)| template.tags.iter().any(|candidate| candidate == tag))
+    }
+
+    pub fn scheduled_task_has_tag(
+        &self,
+        worktree: WorktreeId,
+        task_id: &TaskId,
+        tag: &str,
+    ) -> bool {
+        self.last_scheduled_tasks
+            .iter()
+            .rev()
+            .find(|(_, task)| &task.id == task_id)
+            .is_some_and(|(source, task)| {
+                matches!(source, TaskSourceKind::Worktree { id, .. } if *id == worktree)
+                    && task
+                        .original_task()
+                        .tags
+                        .iter()
+                        .any(|candidate| candidate == tag)
+            })
+    }
+
     /// Resolves global task templates with the provided tag against the provided task context.
     pub fn resolve_global_tasks_with_tag(
         &self,
