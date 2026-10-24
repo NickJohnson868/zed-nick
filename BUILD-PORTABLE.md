@@ -8,24 +8,24 @@
 
 默认 8 个并行任务，使用现有 Cargo 缓存，不执行 clean。BAT 调用同目录的 PowerShell 脚本并透传参数；需要 PowerShell 7、Rust、Visual Studio C++/Windows SDK 和 Spectre 库。先编译 GUI，再单独编译 CLI，成功后才组装目录。脚本优先使用本机 `Documents\tools\rust` 环境及 VS 2026 附带的 CMake，不修改系统环境变量。
 
-输出为项目根目录的 `release\Zed.exe`，以后直接双击它。BAT 仅用于编译打包，运行 Zed 不需要 CMD 或 PowerShell 启动器。打包不会自动启动程序或创建桌面快捷方式，可自行创建直接指向 EXE 的快捷方式。
+交付物为项目根目录的 `Zed-Nick-Portable.zip`。解压后直接双击其中的 `Zed.exe`。BAT 仅用于编译打包，运行 Zed 不需要 CMD 或 PowerShell 启动器。脚本默认在 `.local-portable-build` 临时目录组装，不再使用 `release` 作为交付目录；ZIP 仅包含程序文件和空白 `portable-data`，不会复制本机登录数据。
 
 首次迁移会排除崩溃处理通信文件等临时 socket，保留开发扩展的目录链接，并使用原子目录重命名完成迁移。AMD AGS 6.3.0 依赖优先从已有 Zed 获取，缺少时从上游固定版本 SDK 下载；OpenConsole 从构建输出查找。
 
-首次打包前关闭所有 Zed 窗口，脚本会复制当前账户 `%APPDATA%\Zed` 的配置，以及 `%LOCALAPPDATA%\Zed` 的数据、扩展和缓存。原目录保留，迁移失败时不把半成品当作完整配置。后续打包保留绿色版的 `portable-data`，不重复覆盖配置。
+只有明确传入 `-ImportProfile` 时，脚本才把当前账户 `%APPDATA%\Zed` 的配置和 `%LOCALAPPDATA%\Zed` 的数据复制到指定组装目录。此时先关闭所有 Zed 窗口；原目录保留，迁移失败时不把半成品当作完整配置。仓库根目录的 ZIP 始终保持空白配置。更新已解压的绿色版时，保留它自己的 `portable-data`。
 
 ```powershell
-# 空白配置，适合分享程序
-.\build-portable.bat -SkipProfileImport
+# 默认生成空白配置 ZIP，适合复制到另一台电脑
+.\build-portable.bat
 
-# 指定输出目录
-.\build-portable.bat -OutputDirectory C:\Tools\Zed-Nick
+# 同时将当前个人配置导入指定组装目录；ZIP 仍保持空白
+.\build-portable.bat -OutputDirectory C:\Tools\Zed-Nick -ImportProfile
 
 # 仅组装已成功编译过的本版本产物
 .\build-portable.bat -SkipBuild
 ```
 
-`-SkipBuild` 不检查已有二进制是否包含最新源码；首次构建或修改代码后不要使用。首次导入后的绿色版含有个人配置及可能的登录数据，供本人使用；公开分享时用空白配置重新生成。项目的 JDK、Python、Maven 等工具目录仍需在目标电脑存在或重新配置，绿色版不捆绑这些运行环境。
+`-SkipBuild` 不检查已有二进制是否包含最新源码；首次构建或修改代码后不要使用。项目的 JDK、Python、Maven 等工具目录仍需在目标电脑存在或重新配置，绿色版不捆绑这些运行环境。
 
 ## 运行入口
 
@@ -105,10 +105,10 @@
 
 ## 本轮验证状态
 
-2026-10-23 已用根目录 build-portable.bat、8 个并行任务完成 GUI 与 CLI 的 release-fast 构建和绿色版组装，BAT 返回 0。release/Zed.exe 与 GUI 构建产物、release/bin/zed.exe 与 CLI 构建产物的 SHA-256 一致；个人设置复制一致，稳定版数据库存在，MyBatis 开发扩展链接与 WASM 校验通过。尚未进行新版本的界面交互验证。
+2026-10-23 的历史验证：当时已用根目录 build-portable.bat、8 个并行任务完成 GUI 与 CLI 的 release-fast 构建和绿色版组装，BAT 返回 0。当时的 release/Zed.exe 与 GUI 构建产物、release/bin/zed.exe 与 CLI 构建产物的 SHA-256 一致；个人设置复制一致，稳定版数据库存在，MyBatis 开发扩展链接与 WASM 校验通过。这个旧目录不再是当前交付位置。
 
 
-## Java 运行前增量构建优化（尚未重新打包）
+## Java 运行前增量构建优化
 
 参考 IDEA 的 Application 配置：Main 类、模块 classpath、JDK、JVM 参数、程序参数和环境变量共同组成运行配置。启动前使用 Maven `compile dependency:build-classpath`，只构建 `-pl` 指定模块及 `-am` 依赖；不执行 package、install 或 clean。这里复用 Maven 增量编译，并未实现 IDEA 的 JPS 编译器。
 
@@ -118,4 +118,4 @@
 
 2026-10-23 验证：真实项目 compile + classpath 成功，42 个工作区依赖使用 classes 目录；连续缓存检查均跳过 Maven，优化后的单次检查约 4.2 秒，未启动业务服务。隔离样例通过中文目录/参数、环境变量、无修改重复启动、有修改重新编译及编译失败禁止启动旧代码的验证。
 
-按用户最新要求未重编 Zed。此节描述的是当前源码；现有 release/Zed.exe 仍是优化前的绿色版，之后重新打包才会采用新入口逻辑。
+2026-10-24 已以 8 个并行任务将该源码编译为 GUI 与 CLI，并完成绿色版组装。仓库根目录 ZIP 的 GUI/CLI 与构建产物哈希一致，CLI 返回提交 `c6b606c2fe900ec98f6c95540d0db7b03253c0a3`；ZIP 内含空白 `portable-data`，未包含本机个人数据。实际 Java 运行按钮仍需在界面中验收。

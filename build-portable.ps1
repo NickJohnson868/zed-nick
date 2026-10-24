@@ -2,10 +2,11 @@
 [CmdletBinding()]
 param(
     [ValidateRange(1, 128)][int]$Jobs = 8,
-    [string]$OutputDirectory = (Join-Path $PSScriptRoot 'release'),
+    [string]$OutputDirectory = (Join-Path $PSScriptRoot '.local-portable-build'),
     [string]$TargetDirectory = (Join-Path $env:USERPROFILE 'Documents\tools\rust\targets\zed'),
     [string]$SourceDataDirectory = (Join-Path $env:LOCALAPPDATA 'Zed'),
     [string]$SourceConfigDirectory = (Join-Path $env:APPDATA 'Zed'),
+    [switch]$ImportProfile,
     [switch]$SkipProfileImport,
     [switch]$SkipBuild
 )
@@ -42,10 +43,11 @@ try {
     }
     Assert-NoZedProcess $outputPath '不能覆盖正在运行的绿色版'
     $profile = Join-Path $outputPath 'portable-data'
-    $importProfile = !$SkipProfileImport -and !(Test-Path -LiteralPath $profile)
+    if ($ImportProfile -and $SkipProfileImport) { throw '-ImportProfile 与 -SkipProfileImport 不能同时使用。' }
+    $importProfile = $ImportProfile -and !(Test-Path -LiteralPath $profile)
     if ($importProfile) {
         if (@(Get-Process -Name Zed -ErrorAction SilentlyContinue).Count) {
-            throw '首次迁移配置和数据库前，请关闭所有 Zed 窗口后重试，避免复制使用中的数据库。可使用 -SkipProfileImport 创建空白配置绿色版。'
+            throw '首次迁移配置和数据库前，请关闭所有 Zed 窗口后重试，避免复制使用中的数据库。不导入配置时省略 -ImportProfile。'
         }
         $sourceDataPath = [IO.Path]::GetFullPath($SourceDataDirectory).TrimEnd('\') + '\'
         if (($profile.TrimEnd('\') + '\').StartsWith($sourceDataPath, [StringComparison]::OrdinalIgnoreCase)) {
@@ -164,11 +166,41 @@ try {
     @'
 直接双击本目录的 Zed.exe，不需要 CMD、PowerShell 启动器或安装。
 配置和数据在 portable-data；更新程序时保留此目录。
-首次打包默认复制当前账户的 Zed 配置、扩展、语言服务缓存和数据库。
-个人数据可能包含登录凭据；此目录供本人使用，公开发布时使用 -SkipProfileImport 生成空白版。
+默认使用空白配置；仅在明确传入 -ImportProfile 时向组装目录复制当前账户的 Zed 配置和数据。
+仓库根目录的 ZIP 始终只包含程序文件和空白 portable-data，可用于另一台电脑。
 项目里的 .zed/run-environments.json 配置各语言运行环境；下拉框选择入口。
 '@ | Set-Content -LiteralPath (Join-Path $outputPath '使用说明.txt') -Encoding utf8
     Write-Host "绿色版已生成：$(Join-Path $outputPath 'Zed.exe')" -ForegroundColor Green
+
+    $archivePath = Join-Path $PSScriptRoot 'Zed-Nick-Portable.zip'
+    $temporaryArchive = Join-Path $PSScriptRoot ('.local-portable-zip-' + [Guid]::NewGuid().ToString('N') + '.tmp')
+    $files = @('Zed.exe', 'bin\zed.exe', 'conpty.dll', 'amd_ags_x64.dll', 'x64\OpenConsole.exe', '使用说明.txt')
+    if (Test-Path -LiteralPath (Join-Path $outputPath 'arm64\OpenConsole.exe') -PathType Leaf) {
+        $files += 'arm64\OpenConsole.exe'
+    }
+    try {
+        Add-Type -AssemblyName System.IO.Compression
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $archive = [IO.Compression.ZipFile]::Open($temporaryArchive, [IO.Compression.ZipArchiveMode]::Create)
+        try {
+            [void]$archive.CreateEntry('Zed-Nick-Portable/')
+            [void]$archive.CreateEntry('Zed-Nick-Portable/portable-data/')
+            foreach ($relative in $files) {
+                $source = Join-Path $outputPath $relative
+                if (!(Test-Path -LiteralPath $source -PathType Leaf)) { throw "绿色版缺少文件：$relative" }
+                $name = 'Zed-Nick-Portable/' + $relative.Replace('\', '/')
+                [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                    $archive, $source, $name, [IO.Compression.CompressionLevel]::Optimal
+                )
+            }
+        } finally { $archive.Dispose() }
+        [IO.File]::Move($temporaryArchive, $archivePath, $true)
+    } finally {
+        if (Test-Path -LiteralPath $temporaryArchive -PathType Leaf) {
+            Remove-Item -LiteralPath $temporaryArchive -Force
+        }
+    }
+    Write-Host "绿色 ZIP 已生成：$archivePath" -ForegroundColor Green
 } finally {
     Set-Location -LiteralPath $previousLocation
     foreach ($name in $environmentNames) { [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name], 'Process') }
