@@ -1559,8 +1559,13 @@ impl ProjectPanel {
         loop {
             let entry_id = entry.id;
             match expanded_dir_ids.binary_search(&entry_id) {
-                Ok(ix) if entry.is_dir() => {
-                    expanded_dir_ids.remove(ix);
+                Ok(_) if entry.is_dir() => {
+                    Self::remove_expanded_directory(
+                        expanded_dir_ids,
+                        entry,
+                        worktree,
+                        ProjectPanelSettings::get_global(cx).collapse_children_on_collapse,
+                    );
                     self.selection = Some(SelectedEntry {
                         worktree_id,
                         entry_id,
@@ -1763,6 +1768,21 @@ impl ProjectPanel {
         }
     }
 
+    fn remove_expanded_directory(
+        expanded: &mut Vec<ProjectEntryId>,
+        entry: &Entry,
+        worktree: &Worktree,
+        recursive: bool,
+    ) {
+        expanded.retain(|id| {
+            *id != entry.id
+                && (!recursive
+                    || worktree
+                        .entry_for_id(*id)
+                        .is_none_or(|candidate| !candidate.path.starts_with(&entry.path)))
+        });
+    }
+
     fn toggle_expanded(
         &mut self,
         entry_id: ProjectEntryId,
@@ -1774,8 +1794,19 @@ impl ProjectPanel {
         {
             self.project.update(cx, |project, cx| {
                 match expanded_dir_ids.binary_search(&entry_id) {
-                    Ok(ix) => {
-                        expanded_dir_ids.remove(ix);
+                    Ok(_) => {
+                        if let Some(worktree) = project.worktree_for_id(worktree_id, cx) {
+                            let worktree = worktree.read(cx);
+                            if let Some(entry) = worktree.entry_for_id(entry_id) {
+                                Self::remove_expanded_directory(
+                                    expanded_dir_ids,
+                                    entry,
+                                    worktree,
+                                    ProjectPanelSettings::get_global(cx)
+                                        .collapse_children_on_collapse,
+                                );
+                            }
+                        }
                     }
                     Err(ix) => {
                         project.expand_entry(worktree_id, entry_id, cx);

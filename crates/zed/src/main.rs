@@ -259,8 +259,24 @@ fn main() {
         return;
     }
 
-    let restart_arguments = if let Some(directory) = args.user_data_dir.as_deref() {
-        let directory = paths::set_custom_data_dir(directory);
+    // Portable builds keep their profile next to the executable. An explicit CLI
+    // override still wins, including when an existing window is restarted.
+    let portable_directory = std::env::current_exe()
+        .ok()
+        .and_then(|executable| {
+            executable
+                .parent()
+                .map(|parent| parent.join("portable-data"))
+        })
+        .filter(|directory| directory.is_dir());
+    let user_data_directory = args
+        .user_data_dir
+        .as_deref()
+        .map(std::path::Path::new)
+        .or(portable_directory.as_deref());
+    let restart_arguments = if let Some(directory) = user_data_directory {
+        let directory = directory.to_string_lossy();
+        let directory = paths::set_custom_data_dir(&directory);
         vec![
             std::ffi::OsString::from("--user-data-dir"),
             directory.as_os_str().to_owned(),

@@ -651,6 +651,53 @@ impl Project {
         })
     }
 
+    pub fn stop_tasks_with_tag(
+        &mut self,
+        worktree: worktree::WorktreeId,
+        tag: &str,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(inventory) = self.task_store.read(cx).task_inventory() else {
+            return;
+        };
+        let inventory = inventory.read(cx);
+        let terminals = self
+            .terminals
+            .local_handles
+            .iter()
+            .filter_map(|terminal| terminal.upgrade())
+            .filter(|terminal| {
+                terminal.read(cx).task().is_some_and(|task| {
+                    task.status == terminal::TaskStatus::Running
+                        && inventory.scheduled_task_has_tag(worktree, &task.spawned_task.id, tag)
+                })
+            })
+            .collect::<Vec<_>>();
+        for terminal in terminals {
+            #[cfg(target_os = "windows")]
+            if let Some(process) = terminal.read(cx).pid_getter() {
+                let process_id = process.fallback_pid().as_u32().to_string();
+                cx.background_spawn(async move {
+                    let output = util::command::new_command("taskkill.exe")
+                        .args(["/PID", &process_id, "/T", "/F"])
+                        .output()
+                        .await;
+                    match output {
+                        Ok(output) if output.status.success() => {}
+                        Ok(output) => log::error!(
+                            "Failed to stop task process tree: {}",
+                            String::from_utf8_lossy(&output.stderr)
+                        ),
+                        Err(error) => log::error!("Failed to stop task process tree: {error}"),
+                    }
+                })
+                .detach();
+                continue;
+            }
+            terminal.update(cx, |terminal, _| terminal.kill_active_task());
+        }
+    }
+
     fn resolve_directory_environment(
         &self,
         shell: &str,

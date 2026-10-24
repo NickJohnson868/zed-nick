@@ -18,28 +18,15 @@ Other platforms are not yet available:
 
 - Web ([tracking discussion](https://github.com/zed-industries/zed/discussions/26195))
 
-### Personal run controls
+### Personal Windows build
 
-This fork adds Run/Rerun and Stop buttons to the right side of the title bar. Configure the current project's `.zed/tasks.json` with these task tags:
+Double-click [`build-portable.bat`](./build-portable.bat) (requires PowerShell 7). It builds with 8 parallel jobs, retains Cargo's cache, builds GUI and CLI separately, and assembles `release/` in the repository root. The BAT entry point invokes `build-portable.ps1` and forwards optional arguments. Double-click `release/Zed.exe` directly. The adjacent `portable-data` directory holds the profile; an explicit `--user-data-dir` takes precedence. The first profile import requires all Zed windows to be closed, and subsequent updates preserve the imported profile. Output is gitignored.
 
-| Tag | Action |
-| --- | --- |
-| `primary-run` | Start the project |
-| `primary-restart` | Stop the existing instance and run it again |
-| `primary-stop` | Stop the project |
+The title bar contains an entry selector, Run/Rerun and Stop. Entry discovery runs in the background against non-ignored project files. Per-language runtimes and environment variables are configured in `.zed/run-environments.json`; the menu can create/open the configuration. Java entries use incremental Maven `compile` plus module classpaths and skip Maven when the input/output cache is unchanged. Existing `primary-run` tasks are retained only when no Java entry is discovered. Private project environment configuration is preserved. Java runtime changes are source-only until the next portable build. This is initial discovery for common entry forms, not a complete language semantic index.
 
-The Run button becomes Rerun while a tagged run or restart task is active. Stop is disabled when neither task is running. Task failures and exits restore the idle controls. State updates use Zed's task lifecycle notifications, with no background polling.
+Project panel setting `project_panel.collapse_children_on_collapse` defaults to `true`. Collapsing a parent resets descendant expansion state; set it to `false` to preserve the previous behavior. The setting also appears as **Collapse Children With Parent** in Settings.
 
-Run and restart tasks should finish when the application exits. For script-managed single-instance applications, set `allow_concurrent_runs: true` so restart and stop commands are not queued behind the current application, and prevent duplicate application instances in the script. Build commands and environment variables remain project task configuration; the personal Maven tasks use `package` without `clean`. Keep credentials in private local configuration.
-
-For the personal Windows build, use 16 parallel jobs and retain the existing stable-channel workspace data:
-
-```powershell
-$env:CARGO_BUILD_JOBS = "16"
-$env:CARGO_PROFILE_RELEASE_FAST_DEBUG = "0"
-$env:ZED_RELEASE_CHANNEL = "stable"
-cargo build --locked -p zed --bin zed --profile release-fast
-```
+See [Windows portable build instructions](./BUILD-PORTABLE.md) for usage, run environment examples and current validation status.
 
 ### Developing Zed
 

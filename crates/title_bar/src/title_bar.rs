@@ -2,6 +2,8 @@ mod application_menu;
 pub mod collab;
 mod onboarding_banner;
 mod plan_chip;
+mod run_controls;
+mod run_entries;
 mod title_bar_settings;
 mod update_version;
 
@@ -65,9 +67,6 @@ pub use onboarding_banner::restore_banner;
 const MAX_PROJECT_NAME_LENGTH: usize = 40;
 const MAX_BRANCH_NAME_LENGTH: usize = 40;
 const MAX_SHORT_SHA_LENGTH: usize = 8;
-const RUN_TASK_TAG: &str = "primary-run";
-const RESTART_TASK_TAG: &str = "primary-restart";
-const STOP_TASK_TAG: &str = "primary-stop";
 
 fn linked_worktree_name_anchor<'a>(
     main_worktree_path: Option<&'a Path>,
@@ -224,6 +223,7 @@ pub struct TitleBar {
     update_version: Entity<UpdateVersion>,
     screen_share_popover_handle: PopoverMenuHandle<ContextMenu>,
     _diagnostics_subscription: Option<gpui::Subscription>,
+    run_controls: run_controls::RunControls,
 }
 
 impl Render for TitleBar {
@@ -550,6 +550,7 @@ impl TitleBar {
             update_version,
             screen_share_popover_handle: PopoverMenuHandle::default(),
             _diagnostics_subscription: None,
+            run_controls: run_controls::RunControls::default(),
         };
 
         this.observe_diagnostics(cx);
@@ -622,79 +623,6 @@ impl TitleBar {
                 worktree_path == *repo_path || worktree_path.starts_with(repo_path.as_ref())
             })
             .count()
-    }
-
-    fn render_run_controls(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let worktree = self.effective_active_worktree(cx)?;
-        let worktree_id = worktree.read(cx).id();
-        let task_store = self.project.read(cx).task_store().read(cx);
-        let inventory = task_store.task_inventory()?.read(cx);
-        let running = [RUN_TASK_TAG, RESTART_TASK_TAG].into_iter().any(|tag| {
-            self.project
-                .read(cx)
-                .has_running_task_with_tag(worktree_id, tag, cx)
-        });
-        let can_restart = inventory.has_worktree_task_with_tag(worktree_id, RESTART_TASK_TAG);
-        let controls = [
-            (
-                if running && can_restart {
-                    RESTART_TASK_TAG
-                } else {
-                    RUN_TASK_TAG
-                },
-                if running {
-                    IconName::Rerun
-                } else {
-                    IconName::PlayFilled
-                },
-                Color::Success,
-                if running {
-                    "重新运行项目"
-                } else {
-                    "运行项目"
-                },
-                running && !can_restart,
-            ),
-            (
-                STOP_TASK_TAG,
-                IconName::Stop,
-                Color::Error,
-                "停止项目",
-                !running,
-            ),
-        ];
-        if !inventory.has_worktree_task_with_tag(worktree_id, RUN_TASK_TAG) {
-            return None;
-        }
-        Some(
-            h_flex()
-                .gap_1()
-                .children(
-                    controls
-                        .into_iter()
-                        .filter(|(tag, _, _, _, _)| {
-                            inventory.has_worktree_task_with_tag(worktree_id, tag)
-                        })
-                        .map(|(tag, icon, color, label, disabled)| {
-                            IconButton::new(tag, icon)
-                                .icon_size(IconSize::Small)
-                                .icon_color(color)
-                                .disabled(disabled)
-                                .tooltip(Tooltip::text(label))
-                                .on_click(move |_, window, cx| {
-                                    window.dispatch_action(
-                                        zed_actions::Spawn::ByTag {
-                                            task_tag: tag.into(),
-                                            reveal_target: None,
-                                        }
-                                        .boxed_clone(),
-                                        cx,
-                                    );
-                                })
-                        }),
-                )
-                .into_any_element(),
-        )
     }
 
     fn render_remote_project_connection(&self, cx: &mut Context<Self>) -> Option<AnyElement> {

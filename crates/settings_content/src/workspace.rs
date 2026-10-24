@@ -868,6 +868,10 @@ pub struct ProjectPanelSettingsContent {
     ///
     /// Default: true
     pub auto_fold_dirs: Option<bool>,
+    /// Whether collapsing a directory also resets the expansion state of its descendants.
+    ///
+    /// Default: true
+    pub collapse_children_on_collapse: Option<bool>,
     /// Whether to show folder names with bold text in the project panel.
     ///
     /// Default: false
