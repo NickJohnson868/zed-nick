@@ -1,0 +1,20 @@
+[package]
+name = "zed-mybatis-jump"
+version = "0.2.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[workspace]
+members = ["server"]
+resolver = "2"
+
+[dependencies]
+zed_extension_api = "=0.7.0"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = "debuginfo"

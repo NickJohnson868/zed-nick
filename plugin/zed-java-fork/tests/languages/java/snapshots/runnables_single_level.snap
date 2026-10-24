@@ -1,0 +1,40 @@
+---
+source: tests/support/mod.rs
+expression: captures
+---
+- name: java_package_name
+  line: 1
+  column: 9
+  text: example
+- name: _
+  line: 3
+  column: 1
+  text: "public class SingleLevelPackage {\n    public static void main(String[] args) {\n        System.out.println(\"Hello world!\");\n    }\n}"
+- name: java_class_name
+  line: 3
+  column: 14
+  text: SingleLevelPackage
+- name: run
+  line: 4
+  column: 24
+  text: main
+- name: java_package_name
+  line: 1
+  column: 9
+  text: example
+- name: _
+  line: 3
+  column: 1
+  text: "public class SingleLevelPackage {\n    public static void main(String[] args) {\n        System.out.println(\"Hello world!\");\n    }\n}"
+- name: java_class_name
+  line: 3
+  column: 14
+  text: SingleLevelPackage
+- name: run
+  line: 3
+  column: 14
+  text: SingleLevelPackage
+- name: method_name
+  line: 4
+  column: 24
+  text: main

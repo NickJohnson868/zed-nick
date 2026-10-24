@@ -886,6 +886,38 @@ impl DebugAdapter for PythonDebugAdapter {
         user_env: Option<HashMap<String, String>>,
         cx: &mut AsyncApp,
     ) -> Result<DebugAdapterBinary> {
+        let configured_python = config
+            .config
+            .get("python")
+            .and_then(Value::as_str)
+            .filter(|path| !path.starts_with("${"));
+        if let Some(configured_python) = configured_python {
+            let path = Path::new(configured_python);
+            if !path.is_absolute() || !delegate.fs().is_file(path).await {
+                bail!("Configured Python debugger interpreter does not exist: {configured_python}");
+            }
+            if user_installed_path.is_none() {
+                let toolchain = Toolchain {
+                    name: "Configured Python".into(),
+                    path: configured_python.to_owned().into(),
+                    language_name: LanguageName::new_static(Self::LANGUAGE_NAME),
+                    as_json: Value::Null,
+                };
+                self.fetch_debugpy_whl(Some(toolchain), delegate)
+                    .await
+                    .map_err(|error| anyhow::anyhow!("{error}"))?;
+            }
+            return self
+                .get_installed_binary(
+                    delegate,
+                    config,
+                    user_installed_path,
+                    user_args,
+                    user_env,
+                    Some(configured_python.to_owned()),
+                )
+                .await;
+        }
         if let Some(local_path) = &user_installed_path {
             log::debug!(
                 "Using user-installed debugpy adapter from: {}",

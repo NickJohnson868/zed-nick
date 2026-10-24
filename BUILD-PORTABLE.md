@@ -8,7 +8,9 @@
 
 默认 8 个并行任务，使用现有 Cargo 缓存，不执行 clean。BAT 调用同目录的 PowerShell 脚本并透传参数；需要 PowerShell 7、Rust、Visual Studio C++/Windows SDK 和 Spectre 库。先编译 GUI，再单独编译 CLI，成功后才组装目录。脚本优先使用本机 `Documents\tools\rust` 环境及 VS 2026 附带的 CMake，不修改系统环境变量。
 
-交付物为项目根目录的 `Zed-Nick-Portable.zip`。解压后直接双击其中的 `Zed.exe`。BAT 仅用于编译打包，运行 Zed 不需要 CMD 或 PowerShell 启动器。脚本默认在 `.local-portable-build` 临时目录组装，不再使用 `release` 作为交付目录；ZIP 仅包含程序文件和空白 `portable-data`，不会复制本机登录数据。
+交付物为项目根目录的 `Zed-Nick-Portable.zip`。解压后直接双击其中的 `Zed.exe`。BAT 仅用于编译打包，运行 Zed 不需要 CMD 或 PowerShell 启动器。脚本默认在 `.local-portable-build` 目录组装，不再使用 `release` 作为交付目录。ZIP 中的 `portable-data/` 只是空目录标记：Zed 靠它判断要把数据写在程序旁边，首次启动时才生成设置、数据库和缓存。ZIP 不包含本机的设置、登录信息、插件、语言服务、日志或项目数据。
+
+默认通用打包不会安装个人插件，也不会复用已有数据的组装目录。如果 `.local-portable-build/portable-data` 已有内容，脚本会报错并要求改用新的空 `-OutputDirectory`，不会删除旧数据。ZIP 写完后还会验证其中的 `portable-data/` 确实为空。
 
 首次迁移会排除崩溃处理通信文件等临时 socket，保留开发扩展的目录链接，并使用原子目录重命名完成迁移。AMD AGS 6.3.0 依赖优先从已有 Zed 获取，缺少时从上游固定版本 SDK 下载；OpenConsole 从构建输出查找。
 
@@ -17,6 +19,9 @@
 ```powershell
 # 默认生成空白配置 ZIP，适合复制到另一台电脑
 .\build-portable.bat
+
+# 默认组装目录曾保存过个人数据时，改用新的空目录
+.\build-portable.bat -OutputDirectory C:\Temp\Zed-Nick-Generic
 
 # 同时将当前个人配置导入指定组装目录；ZIP 仍保持空白
 .\build-portable.bat -OutputDirectory C:\Tools\Zed-Nick -ImportProfile

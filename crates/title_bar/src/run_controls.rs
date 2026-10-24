@@ -68,6 +68,23 @@ impl TitleBar {
         cx.notify();
     }
 
+    fn open_run_entry_source(
+        &mut self,
+        relative_path: PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let (Some(root), Some(workspace)) = (&self.run_controls.root, self.workspace.upgrade())
+        else {
+            return;
+        };
+        let path = root.join(relative_path);
+        let task = workspace.update(cx, |workspace, cx| {
+            workspace.open_abs_path(path, Default::default(), window, cx)
+        });
+        task.detach_and_notify_err(workspace.downgrade(), window, cx);
+    }
+
     pub(super) fn render_run_controls(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let worktree = self.effective_active_worktree(cx)?;
         let tree = worktree.read(cx);
@@ -170,7 +187,9 @@ impl TitleBar {
             )
             .menu(move |window, cx| {
                 Some(ContextMenu::build(window, cx, |mut menu, _, _| {
-                    menu = menu.header("项目启动入口");
+                    menu = menu
+                        .end_slot_action(Box::new(menu::SecondaryConfirm))
+                        .header("项目启动入口");
                     for entry in &entries {
                         let id = entry.id.clone();
                         let this = this.clone();
@@ -183,10 +202,38 @@ impl TitleBar {
                             },
                             entry.task.label
                         );
-                        menu = menu.entry(label, None, move |_, cx| {
-                            this.update(cx, |this, cx| this.select_run_entry(id.clone(), cx))
-                                .log_err();
-                        });
+                        if entry.file.as_os_str().is_empty() {
+                            menu = menu.entry(label, None, move |_, cx| {
+                                this.update(cx, |this, cx| this.select_run_entry(id.clone(), cx))
+                                    .log_err();
+                            });
+                        } else {
+                            let source_path = entry.file.clone();
+                            let source_title_bar = this.clone();
+                            menu = menu.entry_with_end_slot(
+                                label,
+                                None,
+                                move |_, cx| {
+                                    this.update(cx, |this, cx| {
+                                        this.select_run_entry(id.clone(), cx)
+                                    })
+                                    .log_err();
+                                },
+                                IconName::ArrowUpRight,
+                                "定位入口代码".into(),
+                                move |window, cx| {
+                                    source_title_bar
+                                        .update(cx, |this, cx| {
+                                            this.open_run_entry_source(
+                                                source_path.clone(),
+                                                window,
+                                                cx,
+                                            )
+                                        })
+                                        .log_err();
+                                },
+                            );
+                        }
                     }
                     if let Some(error) = &error {
                         menu = menu.header(error.clone());

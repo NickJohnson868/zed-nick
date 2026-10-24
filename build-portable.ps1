@@ -46,6 +46,14 @@ try {
     Assert-NoZedProcess $outputPath '不能覆盖正在运行的绿色版'
     $profile = Join-Path $outputPath 'portable-data'
     if ($ImportProfile -and $SkipProfileImport) { throw '-ImportProfile 与 -SkipProfileImport 不能同时使用。' }
+    if (!$ImportProfile -and (Test-Path -LiteralPath $profile) -and
+        ((Get-Item -LiteralPath $profile -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        throw "通用打包不能复用链接的 portable-data：$profile。请指定新的空输出目录。"
+    }
+    if (!$ImportProfile -and (Test-Path -LiteralPath $profile -PathType Container) -and
+        (Get-ChildItem -LiteralPath $profile -Force | Select-Object -First 1)) {
+        throw "通用打包不能复用已有数据的 portable-data：$profile。请指定一个新的空输出目录；原有个人数据不会被删除。"
+    }
     $importProfile = $ImportProfile -and !(Test-Path -LiteralPath $profile)
     if ($importProfile) {
         if (@(Get-Process -Name Zed -ErrorAction SilentlyContinue).Count) {
@@ -166,17 +174,11 @@ try {
     } else {
         New-Item -ItemType Directory -Path $profile -Force | Out-Null
     }
-    $runPlugin = Join-Path $PSScriptRoot 'plugin\zed-runner'
-    $installedRunPlugin = Join-Path $profile 'extensions\installed\zed-runner'
-    if (!(Test-Path -LiteralPath $installedRunPlugin) -and (Test-Path -LiteralPath (Join-Path $runPlugin 'extension.toml'))) {
-        New-Item -ItemType Directory -Path (Split-Path $installedRunPlugin -Parent) -Force | Out-Null
-        New-Item -ItemType Junction -Path $installedRunPlugin -Target $runPlugin | Out-Null
-    }
     @'
 直接双击本目录的 Zed.exe，不需要 CMD、PowerShell 启动器或安装。
-配置和数据在 portable-data；更新程序时保留此目录。
-默认使用空白配置；仅在明确传入 -ImportProfile 时向组装目录复制当前账户的 Zed 配置和数据。
-仓库根目录的 ZIP 始终只包含程序文件和空白 portable-data，可用于另一台电脑。
+portable-data 是空目录标记，表示首次启动后将配置和数据保存在程序旁边。
+通用 ZIP 不包含个人设置、登录信息、数据库、日志、插件或语言服务下载缓存。
+首次启动会自动创建所需内容；更新程序时保留自己机器上的 portable-data。
 项目里的 .zed/run-environments.json 配置各语言运行环境；下拉框选择入口。
 '@ | Set-Content -LiteralPath (Join-Path $outputPath '使用说明.txt') -Encoding utf8
     Write-Host "绿色版已生成：$(Join-Path $outputPath 'Zed.exe')" -ForegroundColor Green
@@ -204,6 +206,13 @@ try {
             }
         } finally { $archive.Dispose() }
         [IO.File]::Move($temporaryArchive, $archivePath, $true)
+        $check = [IO.Compression.ZipFile]::OpenRead($archivePath)
+        try {
+            $dataEntries = @($check.Entries | Where-Object { $_.FullName.StartsWith('Zed-Nick-Portable/portable-data/', [StringComparison]::Ordinal) })
+            if ($dataEntries.Count -ne 1 -or $dataEntries[0].FullName -ne 'Zed-Nick-Portable/portable-data/' -or $dataEntries[0].Length -ne 0) {
+                throw '通用 ZIP 的 portable-data 必须为空目录。'
+            }
+        } finally { $check.Dispose() }
     } finally {
         if (Test-Path -LiteralPath $temporaryArchive -PathType Leaf) {
             Remove-Item -LiteralPath $temporaryArchive -Force

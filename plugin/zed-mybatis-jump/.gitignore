@@ -1,0 +1,5 @@
+/target/
+/bin/
+/extension.wasm
+/extension.wasm.tmp
+__pycache__/

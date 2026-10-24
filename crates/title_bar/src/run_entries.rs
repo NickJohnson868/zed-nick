@@ -10,6 +10,7 @@ pub const CONFIG_PATH: &str = ".zed/run-environments.json";
 pub const RUN_TAG: &str = "toolbar-run";
 const PROVIDER_SCRIPT: &str = "run-provider.ps1";
 const TEMPLATE_FILE: &str = "run-environments.template.json";
+const TEMPLATE_SCRIPT: &str = "config-template.ps1";
 
 #[derive(Clone, Deserialize)]
 pub struct RunEntry {
@@ -60,6 +61,23 @@ fn providers() -> Result<Vec<PathBuf>> {
 
 pub fn config_template() -> Result<String> {
     for provider in providers()? {
+        let generator = provider.join(TEMPLATE_SCRIPT);
+        if generator.is_file() {
+            let output = std::process::Command::new("pwsh")
+                .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-File"])
+                .arg(&generator)
+                .output()
+                .with_context(|| format!("无法运行配置模板：{}", generator.display()))?;
+            ensure!(
+                output.status.success(),
+                "生成运行环境模板失败：{}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+            ensure!(output.stdout.len() <= 64 * 1024, "运行环境模板输出过大");
+            serde_json::from_slice::<serde_json::Value>(&output.stdout)
+                .context("运行环境模板不是有效 JSON")?;
+            return String::from_utf8(output.stdout).context("运行环境模板不是 UTF-8 文本");
+        }
         let template = provider.join(TEMPLATE_FILE);
         if template.is_file() {
             return fs::read_to_string(&template)

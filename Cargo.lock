@@ -18500,6 +18500,7 @@ dependencies = [
  "gpui",
  "icons",
  "livekit_client",
+ "menu",
  "paths",
  "platform_title_bar",
  "project",

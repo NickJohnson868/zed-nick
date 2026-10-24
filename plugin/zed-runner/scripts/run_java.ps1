@@ -81,8 +81,12 @@ try {
         } }
     }
     $java = [string]$entry.java
-    if (Test-Path -LiteralPath $java -PathType Container) { $env:JAVA_HOME=$java; $java=Join-Path $java 'bin/java.exe' }
-    else { $java=(Get-Command $java -CommandType Application -ErrorAction Stop).Source; $env:JAVA_HOME=Split-Path (Split-Path $java -Parent) -Parent }
+    if (![IO.Path]::IsPathFullyQualified($java) -or !(Test-Path -LiteralPath $java -PathType Container)) {
+        throw '请在 java.runtime 中配置 JDK 的绝对目录。'
+    }
+    $env:JAVA_HOME=$java
+    $java=Join-Path $java 'bin/java.exe'
+    if (!(Test-Path -LiteralPath $java -PathType Leaf)) { throw "JDK 缺少 bin/java.exe：$env:JAVA_HOME" }
     $env:PATH=(Join-Path $env:JAVA_HOME 'bin')+[IO.Path]::PathSeparator+$env:PATH
     $javaArguments=@('-Dfile.encoding=UTF-8','-Dstdout.encoding=UTF-8','-Dstderr.encoding=UTF-8')+@($entry.jvmArgs)
     if ([Diagnostics.FileVersionInfo]::GetVersionInfo($java).FileMajorPart -ge 17 -and !@($javaArguments | Where-Object { $_ -like '--enable-native-access*' }).Count) { $javaArguments+='--enable-native-access=ALL-UNNAMED' }
@@ -91,11 +95,9 @@ try {
         $moduleDirectory=Split-Path $modulePom -Parent
         if ($moduleDirectory -ne $root -and !$moduleDirectory.StartsWith($root.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)) { throw '启动模块必须位于当前项目内。' }
         $maven=[string]$entry.maven
-        if (!$maven) {
-            if (Test-Path -LiteralPath (Join-Path $root 'mvnw.cmd')) { $maven=Join-Path $root 'mvnw.cmd' }
-            elseif (Get-Command mvnd -ErrorAction SilentlyContinue) { $maven=(Get-Command mvnd).Source }
-            else { $maven=(Get-Command mvn -ErrorAction Stop).Source }
-        } else { $maven=(Get-Command $maven -ErrorAction Stop).Source }
+        if (![IO.Path]::IsPathFullyQualified($maven) -or !(Test-Path -LiteralPath $maven -PathType Leaf)) {
+            throw '请在 java.build_tool 中配置 Maven/MVND 可执行文件的绝对路径。'
+        }
         $target=Join-Path $moduleDirectory 'target'
         $classpathFile=Join-Path $target 'zed-run-classpath.txt'
         $stateFile=Join-Path $target 'zed-run-state.json'

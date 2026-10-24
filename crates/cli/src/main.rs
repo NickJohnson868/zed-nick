@@ -1166,7 +1166,6 @@ mod flatpak {
 #[cfg(target_os = "windows")]
 mod windows {
     use anyhow::Context;
-    use release_channel::app_identifier;
     use windows::{
         Win32::{
             Foundation::{CloseHandle, ERROR_ALREADY_EXISTS, GENERIC_WRITE, GetLastError},
@@ -1183,12 +1182,14 @@ mod windows {
     use std::path::{Path, PathBuf};
     use std::process::{ExitStatus, Stdio};
 
+    const APP_IDENTIFIER: &str = "Zed-Nick-Stable";
+
     fn check_single_instance() -> bool {
         let mutex = unsafe {
             CreateMutexW(
                 None,
                 false,
-                &HSTRING::from(format!("{}-Instance-Mutex", app_identifier())),
+                &HSTRING::from(format!("{}-Instance-Mutex", APP_IDENTIFIER)),
             )
             .expect("Unable to create instance sync event")
         };
@@ -1231,7 +1232,7 @@ mod windows {
             } else {
                 unsafe {
                     let pipe = CreateFileW(
-                        &HSTRING::from(format!("\\\\.\\pipe\\{}-Named-Pipe", app_identifier())),
+                        &HSTRING::from(format!("\\\\.\\pipe\\{}-Named-Pipe", APP_IDENTIFIER)),
                         GENERIC_WRITE.0,
                         FILE_SHARE_MODE::default(),
                         None,
