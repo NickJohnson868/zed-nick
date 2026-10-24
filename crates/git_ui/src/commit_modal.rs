@@ -459,7 +459,7 @@ impl CommitModal {
                                 telemetry::event!("Git Committed", source = "Git Modal");
                                 this.git_panel.update(cx, |git_panel, cx| {
                                     let options = git_panel.commit_options();
-                                    git_panel.commit_changes(options, window, cx)
+                                    git_panel.commit_changes(options, false, window, cx)
                                 });
                                 cx.emit(DismissEvent);
                             }))

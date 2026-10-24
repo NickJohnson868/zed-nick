@@ -1089,7 +1089,7 @@
     // Whether to show the git panel button in the status bar.
     "button": true,
     // Where to dock the git panel. Can be 'left' or 'right'.
-    "dock": "right",
+    "dock": "left",
     // Default width of the git panel.
     "default_width": 360,
     // Style of the git status indicator in the panel.
@@ -1160,7 +1160,7 @@
     //
     // Choices: project_diff, file_diff, view_file
     // Default: project_diff
-    "entry_primary_click_action": "project_diff",
+    "entry_primary_click_action": "file_diff",
     // Whether the commit message editor is shown in the git panel by default.
     //
     // Choices: expanded, collapsed

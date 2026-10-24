@@ -57,6 +57,27 @@ impl SoloDiffView {
         window: &mut Window,
         cx: &mut App,
     ) -> Task<Result<Entity<Self>>> {
+        Self::open_or_focus_with_preview(entry, repository, workspace, false, window, cx)
+    }
+
+    pub fn open_or_focus_preview(
+        entry: GitStatusEntry,
+        repository: Entity<Repository>,
+        workspace: WeakEntity<Workspace>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Task<Result<Entity<Self>>> {
+        Self::open_or_focus_with_preview(entry, repository, workspace, true, window, cx)
+    }
+
+    fn open_or_focus_with_preview(
+        entry: GitStatusEntry,
+        repository: Entity<Repository>,
+        workspace: WeakEntity<Workspace>,
+        preview: bool,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Task<Result<Entity<Self>>> {
         let Some(workspace_entity) = workspace.upgrade() else {
             return Task::ready(Err(anyhow::anyhow!("workspace was dropped")));
         };
@@ -112,7 +133,20 @@ impl SoloDiffView {
                     )
                 });
 
-                workspace.add_item_to_active_pane(Box::new(view.clone()), None, true, window, cx);
+                let destination_index = if preview {
+                    workspace.active_pane().update(cx, |pane, cx| {
+                        pane.replace_preview_item_id(view.entity_id(), window, cx)
+                    })
+                } else {
+                    None
+                };
+                workspace.add_item_to_active_pane(
+                    Box::new(view.clone()),
+                    destination_index,
+                    true,
+                    window,
+                    cx,
+                );
                 view
             })
         })

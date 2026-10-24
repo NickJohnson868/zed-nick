@@ -956,9 +956,11 @@ fn render_remote_button(
             tracking: UpstreamTracking::Tracked(UpstreamTrackingStatus { ahead, behind }),
             ..
         }) => match (*ahead, *behind) {
-            (0, 0) if show_fetch_button => Some(remote_button::render_fetch_button(
+            (0, 0) if show_fetch_button => Some(remote_button::render_pull_button(
                 keybinding_target,
                 id,
+                0,
+                0,
                 in_progress_operation,
                 menu_handle,
             )),
@@ -1004,36 +1006,6 @@ mod remote_button {
         ButtonLike, CommonAnimationExt, ContextMenu, ElevationIndex, PopoverMenu,
         PopoverMenuHandle, SplitButton, Tooltip, prelude::*,
     };
-
-    pub fn render_fetch_button(
-        keybinding_target: Option<FocusHandle>,
-        id: SharedString,
-        in_progress_operation: Option<RemoteOperationKind>,
-        menu_handle: PopoverMenuHandle<ContextMenu>,
-    ) -> SplitButton {
-        split_button(
-            id,
-            "Fetch",
-            0,
-            0,
-            Some(IconName::ArrowCircle),
-            keybinding_target.clone(),
-            in_progress_operation,
-            menu_handle,
-            move |_, window, cx| {
-                window.dispatch_action(Box::new(git::Fetch), cx);
-            },
-            move |_window, cx| {
-                git_action_tooltip(
-                    "Fetch updates from remote",
-                    &git::Fetch,
-                    "git fetch",
-                    keybinding_target.clone(),
-                    cx,
-                )
-            },
-        )
-    }
 
     pub fn render_push_button(
         keybinding_target: Option<FocusHandle>,

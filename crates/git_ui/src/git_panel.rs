@@ -557,6 +557,8 @@ struct SerializedGitPanel {
     /// `None` means the user never toggled it, so the setting decides.
     #[serde(default)]
     commit_editor_collapsed: Option<bool>,
+    #[serde(default)]
+    commit_and_push_preferred: bool,
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]
@@ -1194,6 +1196,7 @@ pub struct GitPanel {
     diff_stat_total: DiffStat,
     new_staged_count: usize,
     pending_commit: Option<Task<()>>,
+    commit_and_push_preferred: bool,
     pending_remote_operation: Option<RemoteOperationKind>,
     amend_pending: bool,
     original_commit_message: Option<String>,
@@ -1334,6 +1337,9 @@ impl GitPanel {
         let signoff_enabled = serialized_panel
             .as_ref()
             .is_some_and(|panel| panel.signoff_enabled);
+        let commit_and_push_preferred = serialized_panel
+            .as_ref()
+            .is_some_and(|panel| panel.commit_and_push_preferred);
         let commit_editor_was_serialized = serialized_panel
             .as_ref()
             .is_some_and(|panel| panel.commit_editor_collapsed.is_some());
@@ -1530,6 +1536,7 @@ impl GitPanel {
                 changes_count: 0,
                 diff_stat_total: DiffStat::default(),
                 pending_commit: None,
+                commit_and_push_preferred,
                 pending_remote_operation: None,
                 amend_pending,
                 original_commit_message,
@@ -2008,6 +2015,7 @@ impl GitPanel {
 
     fn serialize(&mut self, cx: &mut Context<Self>) {
         let signoff_enabled = self.signoff_enabled;
+        let commit_and_push_preferred = self.commit_and_push_preferred;
         let commit_editor_collapsed = self
             .commit_editor_toggled
             .then_some(self.commit_editor_collapsed);
@@ -2039,6 +2047,7 @@ impl GitPanel {
                             signoff_enabled,
                             commit_messages,
                             commit_editor_collapsed,
+                            commit_and_push_preferred,
                         })?,
                     )
                     .await?;
@@ -2827,7 +2836,21 @@ impl GitPanel {
                 self.focus_handle.focus(window, cx);
             }
             GitPanelClickBehavior::FileDiff => {
-                self.open_solo_diff(&Default::default(), window, cx);
+                if let (Some(repository), Some(entry)) = (
+                    self.active_repository.clone(),
+                    self.get_selected_entry()
+                        .and_then(GitListEntry::status_entry)
+                        .cloned(),
+                ) {
+                    SoloDiffView::open_or_focus_preview(
+                        entry,
+                        repository,
+                        self.workspace.clone(),
+                        window,
+                        cx,
+                    )
+                    .detach_and_notify_err(self.workspace.clone(), window, cx);
+                }
             }
             GitPanelClickBehavior::ViewFile => {
                 self.view_file(&Default::default(), window, cx);
@@ -3904,7 +3927,7 @@ impl GitPanel {
     ) -> bool {
         if commit_editor_focus_handle.contains_focused(window, cx) {
             let options = self.commit_options();
-            self.commit_changes(options, window, cx);
+            self.commit_changes(options, false, window, cx);
             true
         } else {
             cx.propagate();
@@ -4036,12 +4059,14 @@ impl GitPanel {
     pub(crate) fn commit_changes(
         &mut self,
         options: CommitOptions,
+        push_after_commit: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let Some(active_repository) = self.active_repository.clone() else {
             return;
         };
+        let committed_repository_id = active_repository.read(cx).id;
         let error_spawn = |message, window: &mut Window, cx: &mut App| {
             let prompt = window.prompt(PromptLevel::Warning, message, None, &["OK"], cx);
             cx.spawn(async move |_| {
@@ -4117,6 +4142,13 @@ impl GitPanel {
                                 .update(cx, |editor, cx| editor.clear(window, cx));
                             this.original_commit_message = None;
                             this.serialize(cx);
+                        }
+                        if push_after_commit
+                            && this.active_repository.as_ref().is_some_and(|repository| {
+                                repository.read(cx).id == committed_repository_id
+                            })
+                        {
+                            this.push(false, false, window, cx);
                         }
                     }
                     Err(e) => this.show_error_toast("commit", e, cx),
@@ -7193,9 +7225,31 @@ impl GitPanel {
         Some(footer)
     }
 
+    fn commit_with_preference(
+        &mut self,
+        push_after_commit: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.commit_and_push_preferred != push_after_commit {
+            self.commit_and_push_preferred = push_after_commit;
+            self.serialize(cx);
+            cx.notify();
+        }
+        self.commit_changes(self.commit_options(), push_after_commit, window, cx);
+    }
+
     fn render_commit_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let (can_commit, tooltip) = self.configure_commit_button(cx);
         let title = self.commit_button_title();
+        let push_title = if self.amend_pending {
+            "Amend and Push"
+        } else {
+            "Commit and Push"
+        };
+        let primary_push = self.commit_and_push_preferred;
+        let primary_title = if primary_push { push_title } else { title };
+        let alternate_title = if primary_push { title } else { push_title };
         let commit_tooltip_focus_handle = self.commit_editor.focus_handle(cx);
         let options = self.commit_options();
         let amend = options.amend;
@@ -7210,18 +7264,23 @@ impl GitPanel {
 
         h_flex()
             .id("commit-wrapper")
+            .gap_1()
             .on_hover(cx.listener(move |this, hovered, _, cx| {
                 this.show_placeholders =
                     *hovered && !this.has_staged_changes() && !this.has_unstaged_conflicts();
                 cx.notify()
             }))
             .child(SplitButton::new(
-                ButtonLike::new_rounded_left(format!("split-button-left-{}", title))
+                ButtonLike::new_rounded_left(format!("split-button-left-{}", primary_title))
                     .layer(ElevationIndex::ModalSurface)
                     .size(ButtonSize::Compact)
-                    .disabled(!can_commit || self.modal_open)
+                    .disabled(
+                        !can_commit
+                            || self.modal_open
+                            || (primary_push && !self.can_push_and_pull(cx)),
+                    )
                     .child(
-                        Label::new(title)
+                        Label::new(primary_title)
                             .size(LabelSize::Small)
                             .color(label_color)
                             .mr_0p5(),
@@ -7232,8 +7291,7 @@ impl GitPanel {
                             telemetry::event!("Git Committed", source = "Git Panel");
                             git_panel
                                 .update(cx, |git_panel, cx| {
-                                    let options = git_panel.commit_options();
-                                    git_panel.commit_changes(options, window, cx);
+                                    git_panel.commit_with_preference(primary_push, window, cx);
                                 })
                                 .ok();
                         }
@@ -7246,10 +7304,11 @@ impl GitPanel {
                                     tooltip,
                                     Some(&git::Commit),
                                     format!(
-                                        "git commit{}{}{}",
+                                        "git commit{}{}{}{}",
                                         if amend { " --amend" } else { "" },
                                         if signoff { " --signoff" } else { "" },
-                                        if no_verify { " --no-verify" } else { "" }
+                                        if no_verify { " --no-verify" } else { "" },
+                                        if primary_push { " && git push" } else { "" },
                                     ),
                                     &handle.clone(),
                                     cx,
@@ -7260,13 +7319,37 @@ impl GitPanel {
                         }
                     }),
                 self.render_git_commit_menu(
-                    ElementId::Name(format!("split-button-right-{}", title).into()),
+                    ElementId::Name(format!("split-button-right-{}", primary_title).into()),
                     Some(commit_tooltip_focus_handle),
                     self.generate_commit_message_task.is_some(),
                     cx,
                 )
                 .into_any_element(),
             ))
+            .child(
+                Button::new("alternate-commit-action", alternate_title)
+                    .size(ButtonSize::Compact)
+                    .disabled(
+                        !can_commit
+                            || self.modal_open
+                            || (!primary_push && !self.can_push_and_pull(cx)),
+                    )
+                    .on_click({
+                        let git_panel = cx.weak_entity();
+                        move |_, window, cx| {
+                            git_panel
+                                .update(cx, |git_panel, cx| {
+                                    git_panel.commit_with_preference(!primary_push, window, cx);
+                                })
+                                .ok();
+                        }
+                    })
+                    .tooltip(Tooltip::text(if primary_push {
+                        "Commit changes"
+                    } else {
+                        "Commit, then push when the commit succeeds"
+                    })),
+            )
     }
 
     fn render_pending_amend(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -13009,6 +13092,7 @@ mod tests {
                 signoff_enabled: false,
                 commit_messages: panel.serialized_commit_messages(cx),
                 commit_editor_collapsed: None,
+                commit_and_push_preferred: false,
             }
         });
 
@@ -13053,6 +13137,7 @@ mod tests {
         let mismatched_serialized_panel = SerializedGitPanel {
             signoff_enabled: false,
             commit_editor_collapsed: None,
+            commit_and_push_preferred: false,
             commit_messages: BTreeMap::from_iter([(
                 path!("/root/other-project").to_string(),
                 SerializedCommitMessage {
@@ -13152,6 +13237,7 @@ mod tests {
             signoff_enabled: false,
             commit_messages: panel.serialized_commit_messages(cx),
             commit_editor_collapsed: None,
+            commit_and_push_preferred: false,
         });
         let buffer = repository.read_with(cx, |repository, _| {
             repository.commit_message_buffer().unwrap().clone()
@@ -13248,6 +13334,7 @@ mod tests {
             signoff_enabled: false,
             commit_messages: panel.serialized_commit_messages(cx),
             commit_editor_collapsed: None,
+            commit_and_push_preferred: false,
         });
 
         // Simulate a restart and restore from the serialized state.
