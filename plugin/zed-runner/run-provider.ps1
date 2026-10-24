@@ -148,4 +148,4 @@ foreach ($item in @($config.entries)) {
     $entry = $item | ConvertTo-Json -Depth 30 | ConvertFrom-Json -AsHashtable
     if ($entry.id -and $entry.task -and $entry.file) { $entries.Add($entry) }
 }
-@{ version=1; entries=@($entries.ToArray()); warnings=@($warnings.ToArray()) } | ConvertTo-Json -Depth 50 -Compress
+@{ version=1; entries=@($entries.ToArray()); warnings=@($warnings.ToArray()) } | ConvertTo-Json -Depth 50 -Compress -EscapeHandling EscapeNonAscii
