@@ -1,0 +1,8 @@
+{
+  "environments": {
+    "java": { "runtime": "", "build_tool": "", "env": {}, "args": [], "jvm_args": [] },
+    "go": { "runtime": "", "env": {} },
+    "python": { "runtime": "", "env": {} }
+  },
+  "entries": []
+}

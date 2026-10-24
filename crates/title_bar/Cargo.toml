@@ -40,6 +40,7 @@ chrono.workspace = true
 client.workspace = true
 cloud_api_types.workspace = true
 command_palette_hooks.workspace = true
+dap.workspace = true
 db.workspace = true
 
 git_ui_core.workspace = true
@@ -63,10 +64,9 @@ util.workspace = true
 workspace.workspace = true
 zed_actions.workspace = true
 arrayvec = "0.7.6"
-base64.workspace = true
-regex.workspace = true
 serde_json.workspace = true
 task.workspace = true
+paths.workspace = true
 
 [dev-dependencies]
 call = { workspace = true, features = ["test-support"] }

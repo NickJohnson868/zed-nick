@@ -34,6 +34,8 @@ $savedEnvironment = @{}
 $environmentNames = @('CARGO_HOME', 'RUSTUP_HOME', 'CARGO_TARGET_DIR', 'CARGO_BUILD_JOBS', 'CARGO_PROFILE_RELEASE_FAST_DEBUG', 'ZED_RELEASE_CHANNEL', 'ZED_UPDATE_EXPLANATION', 'PATH')
 foreach ($name in $environmentNames) { $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
 $previousLocation = Get-Location
+$buildProcess = Get-Process -Id $PID
+$previousPriority = $buildProcess.PriorityClass
 try {
     Set-Location -LiteralPath $PSScriptRoot
     $outputPath = [IO.Path]::GetFullPath($OutputDirectory)
@@ -56,6 +58,7 @@ try {
     }
 
     if (!$SkipBuild) {
+        $buildProcess.PriorityClass = [Diagnostics.ProcessPriorityClass]::BelowNormal
         $rustRoot = Join-Path $env:USERPROFILE 'Documents\tools\rust'
         if (Test-Path -LiteralPath (Join-Path $rustRoot 'cargo\bin\cargo.exe')) {
             $env:CARGO_HOME = Join-Path $rustRoot 'cargo'
@@ -163,6 +166,12 @@ try {
     } else {
         New-Item -ItemType Directory -Path $profile -Force | Out-Null
     }
+    $runPlugin = Join-Path $PSScriptRoot 'plugin\zed-runner'
+    $installedRunPlugin = Join-Path $profile 'extensions\installed\zed-runner'
+    if (!(Test-Path -LiteralPath $installedRunPlugin) -and (Test-Path -LiteralPath (Join-Path $runPlugin 'extension.toml'))) {
+        New-Item -ItemType Directory -Path (Split-Path $installedRunPlugin -Parent) -Force | Out-Null
+        New-Item -ItemType Junction -Path $installedRunPlugin -Target $runPlugin | Out-Null
+    }
     @'
 直接双击本目录的 Zed.exe，不需要 CMD、PowerShell 启动器或安装。
 配置和数据在 portable-data；更新程序时保留此目录。
@@ -202,6 +211,7 @@ try {
     }
     Write-Host "绿色 ZIP 已生成：$archivePath" -ForegroundColor Green
 } finally {
+    $buildProcess.PriorityClass = $previousPriority
     Set-Location -LiteralPath $previousLocation
     foreach ($name in $environmentNames) { [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name], 'Process') }
 }

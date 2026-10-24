@@ -1,0 +1,6 @@
+id = "zed-runner"
+name = "Personal Run and Debug"
+version = "0.1.0"
+schema_version = 1
+authors = ["62453"]
+description = "Personal project entry discovery for the Zed-Nick toolbar"

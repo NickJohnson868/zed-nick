@@ -27,31 +27,15 @@ impl TitleBar {
             return;
         }
         let root = worktree.abs_path().to_path_buf();
-        let files = worktree
-            .snapshot()
-            .files(false, 0)
-            .filter(|entry| {
-                !entry.is_external
-                    && !entry.path.components().any(|component| {
-                        matches!(
-                            component,
-                            "target"
-                                | "node_modules"
-                                | ".venv"
-                                | "venv"
-                                | ".git"
-                                | "build"
-                                | "dist"
-                                | "vendor"
-                        )
-                    })
-            })
-            .map(|entry| entry.path.as_std_path().to_path_buf())
-            .collect();
         self.run_controls.scan_id = worktree.completed_scan_id();
         self.run_controls.root = Some(root.clone());
         self.run_controls.error = None;
-        let discovery = cx.background_spawn(async move { run_entries::discover(&root, files) });
+        if TrustedWorktrees::has_restricted_worktrees(&self.project.read(cx).worktree_store(), cx) {
+            self.run_controls.entries.clear();
+            self.run_controls.error = Some("信任项目后才能加载运行入口扩展".into());
+            return;
+        }
+        let discovery = cx.background_spawn(async move { run_entries::discover(&root).await });
         self.run_controls.scan = Some(cx.spawn(async move |this, cx| {
             let result = discovery.await;
             this.update(cx, |this, cx| {
@@ -59,12 +43,7 @@ impl TitleBar {
                     Ok(discovery) => {
                         this.run_controls.entries = discovery.entries;
                         this.run_controls.active_file = None;
-                        if !discovery.warnings.is_empty() {
-                            this.run_controls.error = Some(format!(
-                                "部分文件未扫描（{}）；点击可重试",
-                                discovery.warnings.len()
-                            ));
-                        }
+                        this.run_controls.error = discovery.warnings.first().cloned();
                     }
                     Err(error) => {
                         this.run_controls.entries.clear();
@@ -119,18 +98,9 @@ impl TitleBar {
             .map(|path| path.path.as_std_path().to_path_buf());
         if self.run_controls.active_file != active_file {
             if let Some(active_file) = &active_file {
-                let language = match active_file
+                let extension = active_file
                     .extension()
-                    .and_then(|extension| extension.to_str())
-                {
-                    Some("java") => Some("java"),
-                    Some("py") => Some("python"),
-                    Some("rs") => Some("rust"),
-                    Some("js" | "ts" | "tsx" | "jsx") => Some("javascript"),
-                    Some("go") => Some("go"),
-                    Some("cs") => Some("csharp"),
-                    _ => None,
-                };
+                    .and_then(|extension| extension.to_str());
                 let entries = &self.run_controls.entries;
                 let current_language = entries
                     .iter()
@@ -140,11 +110,15 @@ impl TitleBar {
                     .iter()
                     .find(|entry| &entry.file == active_file)
                     .or_else(|| {
-                        language
-                            .filter(|language| Some(*language) != current_language)
-                            .and_then(|language| {
-                                entries.iter().find(|entry| entry.language == language)
+                        extension.and_then(|extension| {
+                            entries.iter().find(|entry| {
+                                Some(entry.language.as_str()) != current_language
+                                    && entry
+                                        .matching_extensions
+                                        .iter()
+                                        .any(|candidate| candidate == extension)
                             })
+                        })
                     });
                 if let Some(candidate) = candidate {
                     self.run_controls.selected = Some(candidate.id.clone());
@@ -181,6 +155,10 @@ impl TitleBar {
                 }
             });
         let this = cx.entity().downgrade();
+        let debug_entry = selected
+            .as_ref()
+            .filter(|entry| entry.debug.is_some())
+            .cloned();
         let entries = self.run_controls.entries.clone();
         let error = self.run_controls.error.clone();
         let selected_id = selected.as_ref().map(|entry| entry.id.clone());
@@ -239,12 +217,13 @@ impl TitleBar {
                                             cx.background_spawn(async move {
                                                 use std::io::Write as _;
                                                 if let Some(parent) = config_path.parent() { std::fs::create_dir_all(parent)?; }
+                                                let template = run_entries::config_template()?;
                                                 match std::fs::OpenOptions::new().write(true).create_new(true).open(config_path) {
-                                                    Ok(mut file) => file.write_all(run_entries::CONFIG_TEMPLATE.as_bytes())?,
+                                                    Ok(mut file) => file.write_all(template.as_bytes())?,
                                                     Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {},
-                                                    Err(error) => return Err(error),
+                                                    Err(error) => return Err(error.into()),
                                                 }
-                                                std::io::Result::Ok(())
+                                                anyhow::Ok(())
                                             }).await?;
                                             task_workspace.update_in(cx, |workspace, window, cx| workspace.open_abs_path(path, Default::default(), window, cx))?.await?;
                                             anyhow::Ok(())
@@ -284,6 +263,17 @@ impl TitleBar {
                             this.launch_run_entry(entry, worktree_id, running, window, cx);
                         }
                     })),
+                )
+                .child(
+                    IconButton::new("debug-selected-entry", IconName::Debug)
+                        .icon_size(IconSize::Small)
+                        .disabled(debug_entry.is_none() || restricted || busy)
+                        .tooltip(Tooltip::text("调试选中入口"))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            if let Some(entry) = debug_entry.clone() {
+                                this.debug_run_entry(entry, worktree_id, window, cx);
+                            }
+                        })),
                 )
                 .child(
                     IconButton::new("stop-selected-entry", IconName::Stop)
@@ -392,5 +382,55 @@ impl TitleBar {
             .log_err();
         }));
         cx.notify();
+    }
+
+    fn debug_run_entry(
+        &mut self,
+        entry: RunEntry,
+        worktree_id: project::WorktreeId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if TrustedWorktrees::has_restricted_worktrees(&self.project.read(cx).worktree_store(), cx) {
+            return;
+        }
+        let (Some(root), Some(scenario), Some(workspace)) = (
+            self.run_controls.root.clone(),
+            entry.debug,
+            self.workspace.upgrade(),
+        ) else {
+            return;
+        };
+        if workspace.read(cx).debugger_provider().is_none() {
+            self.run_controls.error = Some("当前窗口未启用调试面板".into());
+            cx.notify();
+            return;
+        }
+        if dap::DapRegistry::global(cx)
+            .adapter(&scenario.adapter)
+            .is_none()
+        {
+            self.run_controls.error = Some(format!("尚未加载调试适配器：{}", scenario.adapter));
+            cx.notify();
+            return;
+        }
+        let mut task_context = TaskContext {
+            cwd: Some(root.clone()),
+            ..Default::default()
+        };
+        task_context.task_variables.insert(
+            VariableName::WorktreeRoot,
+            root.to_string_lossy().into_owned(),
+        );
+        workspace.update(cx, |workspace, cx| {
+            workspace.start_debug_session(
+                scenario,
+                task_context.into(),
+                None,
+                Some(worktree_id),
+                window,
+                cx,
+            );
+        });
     }
 }
