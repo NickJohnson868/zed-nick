@@ -5,6 +5,7 @@ $configPath = Join-Path $Root '.zed/run-environments.json'
 $config = if (Test-Path -LiteralPath $configPath) { Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json } else { $null }
 $entries = [Collections.Generic.List[object]]::new()
 $warnings = [Collections.Generic.List[string]]::new()
+$powerShellExecutable = (Get-Process -Id $PID).Path
 . "$PSScriptRoot/scripts/workspace_files.ps1"
 try {
     $files = @(Get-WorkspaceFiles $Root)
@@ -81,7 +82,11 @@ function Python-Project([string]$ScriptPath) {
 }
 function Add-Entry([string]$Id, [string]$Language, [string]$File, [string]$Label, [string]$Command,
                    [string[]]$Arguments, [hashtable]$Variables, [string[]]$Extensions, $DebugConfig) {
-    $task = @{ label=$Label; command=$Command; args=@($Arguments); cwd=$Root; env=$Variables;
+    $taskCommand = "& '" + $Command.Replace("'", "''") + "'"
+    $taskArguments = @($Arguments | ForEach-Object { "'" + $_.Replace("'", "''") + "'" })
+    $taskArguments += '; exit $LASTEXITCODE'
+    $task = @{ label=$Label; command=$taskCommand; args=$taskArguments; cwd=$Root; env=$Variables;
+               shell=@{ with_arguments=@{ program=$powerShellExecutable; args=@('-NoLogo','-NoProfile') } };
                save='all'; show_command=$false; show_summary=$true }
     $entry = @{ id=$Id; language=$Language; file=$File.Replace('\','/');
                 matching_extensions=@($Extensions); task=$task }
