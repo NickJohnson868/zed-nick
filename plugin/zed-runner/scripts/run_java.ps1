@@ -6,35 +6,26 @@ $OutputEncoding = [Console]::OutputEncoding
 $argumentFile = $null
 $mutex = $null
 $locked = $false
-$ignored = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-foreach ($name in @('.git','.zed','.idea','.venv','venv','target','node_modules','build','dist','release','out','logs','temp','__pycache__','.pytest_cache','.mypy_cache')) { [void]$ignored.Add($name) }
+. "$PSScriptRoot/workspace_files.ps1"
 
 function Get-InputStamp([string]$Root, [string[]]$Modules, [string]$Identity) {
     $hash = [Security.Cryptography.IncrementalHash]::CreateHash([Security.Cryptography.HashAlgorithmName]::SHA256)
-    $directories = [Collections.Generic.Stack[string]]::new()
-    $directories.Push($Root)
     $files = [Collections.Generic.List[string]]::new()
     try {
-        while ($directories.Count) {
-            foreach ($item in [IO.DirectoryInfo]::new($directories.Pop()).EnumerateFileSystemInfos()) {
-                if ($item.Attributes -band [IO.FileAttributes]::Directory) {
-                    if ($ignored.Contains($item.Name) -or $item.Name.StartsWith('.local')) { continue }
-                    if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "源目录包含链接，无法确认缓存：$($item.FullName)" }
-                    $directories.Push($item.FullName)
-                } else {
-                    $relative = [IO.Path]::GetRelativePath($Root, $item.FullName).Replace('\','/')
-                    $source = $relative -match '(^|/)src/' -or $item.Extension -in @('.java','.kt','.scala','.groovy','.proto')
-                    $inScope = !$Modules.Count
-                    if ($source -and !$inScope) {
-                        foreach ($module in $Modules) {
-                            if ($item.FullName.StartsWith($module.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)) { $inScope=$true; break }
-                        }
-                    }
-                    if ($item.Name -eq 'pom.xml' -or ($inScope -and $source) -or $relative.StartsWith('.mvn/') -or $item.Name -in @('mvnw','mvnw.cmd')) { $files.Add($item.FullName) }
+        foreach ($relative in @(Get-WorkspaceFiles $Root -StrictFallback)) {
+            $path = Join-Path $Root $relative
+            if (!(Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+            $item = [IO.FileInfo]::new($path)
+            $source = $relative -match '(^|/)src/' -or $item.Extension -in @('.java','.kt','.scala','.groovy','.proto')
+            $inScope = !$Modules.Count
+            if ($source -and !$inScope) {
+                foreach ($module in $Modules) {
+                    if ($item.FullName.StartsWith($module.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)) { $inScope=$true; break }
                 }
             }
+            if ($item.Name -eq 'pom.xml' -or ($inScope -and $source) -or $relative.StartsWith('.mvn/') -or $item.Name -in @('mvnw','mvnw.cmd')) { $files.Add($item.FullName) }
         }
-        foreach ($path in @((Join-Path $Root '.zed/run-config.json'),(Join-Path $Root '.zed/run-environments.json'),(Join-Path $env:USERPROFILE '.m2/settings.xml'),(Join-Path $env:USERPROFILE '.m2/toolchains.xml'))) {
+        foreach ($path in @((Join-Path $Root 'pom.xml'),(Join-Path $Root '.zed/run-config.json'),(Join-Path $Root '.zed/run-environments.json'),(Join-Path $Root '.zed/runner-ignore.json'),(Join-Path $env:USERPROFILE '.m2/settings.xml'),(Join-Path $env:USERPROFILE '.m2/toolchains.xml'))) {
             if (Test-Path -LiteralPath $path -PathType Leaf) { $files.Add($path) }
         }
         $files.Sort([StringComparer]::Ordinal)

@@ -5,30 +5,13 @@ $configPath = Join-Path $Root '.zed/run-environments.json'
 $config = if (Test-Path -LiteralPath $configPath) { Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json } else { $null }
 $entries = [Collections.Generic.List[object]]::new()
 $warnings = [Collections.Generic.List[string]]::new()
-$files = @()
+. "$PSScriptRoot/scripts/workspace_files.ps1"
 try {
-    $git = Get-Command git -CommandType Application -ErrorAction Stop
-    $files = @(& $git.Source -C $Root ls-files --cached --others --exclude-standard 2>$null | Where-Object { $_ })
-    if ($LASTEXITCODE -ne 0) { $files = @() }
-} catch { $files = @() }
-if (!$files.Count) {
-    $pending = [Collections.Generic.Stack[string]]::new()
-    $scannedFiles = [Collections.Generic.List[string]]::new()
-    $pending.Push($Root)
-    while ($pending.Count) {
-        $directory = $pending.Pop()
-        foreach ($item in Get-ChildItem -LiteralPath $directory -Force -ErrorAction SilentlyContinue) {
-            if ($item.PSIsContainer) {
-                if ($item.Name -notin @('target','build','node_modules','.git','.venv','venv','site-packages','.tox','__pycache__') -and
-                    !$item.Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) { $pending.Push($item.FullName) }
-            } else {
-                $scannedFiles.Add([IO.Path]::GetRelativePath($Root, $item.FullName).Replace('\','/'))
-            }
-        }
-    }
-    $files = $scannedFiles.ToArray()
+    $files = @(Get-WorkspaceFiles $Root)
+} catch {
+    $files = @()
+    $warnings.Add("自动入口扫描失败：$($_.Exception.Message)")
 }
-$files = @($files | Where-Object { $_ -notmatch '(^|/)(target|build|node_modules|\.git|\.venv|venv|site-packages|\.tox|__pycache__)/' })
 function Configured-File([string]$Value, [string]$Name) {
     if (!$Value) { return $null }
     if (![IO.Path]::IsPathFullyQualified($Value) -or !(Test-Path -LiteralPath $Value -PathType Leaf)) {

@@ -1,0 +1,9 @@
+id = "idea-islands-2026"
+name = "IDEA Islands Dark 2026"
+version = "1.0.0"
+schema_version = 1
+authors = ["NickJohnson868"]
+description = "IntelliJ IDEA 2026.2 Islands Dark colors for Zed, based on JetBrains' official theme and editor scheme."
+repository = "https://github.com/NickJohnson868/zed-nick"
+
+themes = ["themes/idea-islands-dark-2026.json"]
