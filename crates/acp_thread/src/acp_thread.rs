@@ -3985,10 +3985,10 @@ impl AcpThread {
     }
 
     /// Ends a history replay into this session, after a successful load or resume. The
-    /// subagents RFD treats what the replay reported about subagents as history: it may
-    /// stay visible, but must not allow cancelling or confirm current activity until the
-    /// agent reports it again. A replayed outcome, such as a completed or failed
-    /// subagent, stays, since it confirms no activity.
+    /// subagents RFD treats the work states and cancel grants that the replay reported for
+    /// subagents as history, outcomes included: each subagent's work state is unconfirmed,
+    /// and it cannot be cancelled, until the agent reports current ones after the response.
+    /// Titles and transcripts stay.
     pub fn invalidate_replayed_subagent_state(&mut self, cx: &mut Context<Self>) {
         for subagent in self.subagents.values() {
             subagent.update(cx, |subagent, cx| {
@@ -3996,9 +3996,7 @@ impl AcpThread {
                     association.can_cancel = false;
                     cx.notify();
                 }
-                if subagent.foreground_activity().is_active() {
-                    subagent.clear_session_state(cx).log_err();
-                }
+                subagent.clear_session_state(cx).log_err();
                 subagent.invalidate_replayed_subagent_state(cx);
             });
         }
@@ -6282,8 +6280,10 @@ impl AcpThread {
             })
     }
 
+    /// The latest tool call that ran the subagent `session_id`. A resumed subagent has one
+    /// per run, and the latest says how the subagent's current work went.
     pub fn tool_call_for_subagent(&self, session_id: &acp_v2::SessionId) -> Option<&ToolCall> {
-        self.entries.iter().find_map(|entry| match entry {
+        self.entries.iter().rev().find_map(|entry| match entry {
             AgentThreadEntry::ToolCall(tool_call) => {
                 if let Some(subagent_session_info) = &tool_call.subagent_session_info
                     && &subagent_session_info.session_id == session_id
@@ -17191,6 +17191,35 @@ mod tests {
             RequestPermissionOutcome::Cancelled
         ));
         cx.run_until_parked();
+    }
+
+    #[gpui::test]
+    async fn test_tool_call_for_subagent_is_its_latest_run(cx: &mut TestAppContext) {
+        init_test(cx);
+        let thread = new_test_thread(cx).await;
+        thread.update(cx, |thread, cx| {
+            for (id, status) in [
+                ("first-run", acp_v1::ToolCallStatus::Failed),
+                ("resumed-run", acp_v1::ToolCallStatus::InProgress),
+            ] {
+                thread
+                    .upsert_tool_call(
+                        acp_v1::ToolCall::new(acp_v1::ToolCallId::new(id), "Run subagent")
+                            .status(status)
+                            .meta(acp_v1::Meta::from_iter([(
+                                SUBAGENT_SESSION_INFO_META_KEY.into(),
+                                json!({"session_id": "child", "message_start_index": 0}),
+                            )])),
+                        cx,
+                    )
+                    .expect("tool call");
+            }
+            let latest = thread
+                .tool_call_for_subagent(&acp_v2::SessionId::new("child"))
+                .expect("the subagent has a tool call");
+            assert_eq!(latest.id, acp_v2::ToolCallId::new("resumed-run"));
+            assert_eq!(latest.status(), ToolCallStatus::InProgress);
+        });
     }
 
     #[gpui::test]
