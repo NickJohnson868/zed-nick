@@ -146,8 +146,16 @@ try {
         [Text.Encoding]::RegisterProvider([Text.CodePagesEncodingProvider]::Instance)
         $codePage=if ($IsWindows) { [int][Microsoft.Win32.Registry]::GetValue('HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Nls\CodePage','ACP',65001) } else { 65001 }
         $encoding=if ($codePage -eq 65001) { [Text.UTF8Encoding]::new($false,$true) } else { [Text.Encoding]::GetEncoding($codePage,[Text.EncoderFallback]::ExceptionFallback,[Text.DecoderFallback]::ExceptionFallback) }
-        [IO.File]::WriteAllLines($argumentFile,$lines,$encoding)
-        $javaArguments=@('@'+$argumentFile)
+        try {
+            [IO.File]::WriteAllLines($argumentFile,$lines,$encoding)
+            $javaArguments=@('@'+$argumentFile)
+        } catch [Text.EncoderFallbackException] {
+            if (!$IsWindows) { throw }
+            # Windows' ANSI argument files cannot represent every Unicode path.
+            # Keep the original arguments so PowerShell passes them as UTF-16.
+            if (Test-Path -LiteralPath $argumentFile) { Remove-Item -LiteralPath $argumentFile -Force }
+            $argumentFile=$null
+        }
     }
     $javaArguments+=@($entry.args)
     Write-Host "启动 Main：$($entry.class)" -ForegroundColor Cyan
