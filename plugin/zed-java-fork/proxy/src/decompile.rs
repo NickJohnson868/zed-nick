@@ -1,6 +1,6 @@
 use crate::{lsp_error, pending::PendingResponses};
 use proxy_common::{encode_lsp, path_to_file_uri};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha1::{Digest, Sha1};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -9,8 +9,8 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc, Condvar, Mutex,
+        atomic::{AtomicU64, Ordering},
     },
     thread::{self, JoinHandle},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -725,11 +725,7 @@ fn cache_path_in(directory: &Path, uri: &str) -> PathBuf {
             } else {
                 character.is_ascii_alphanumeric() || matches!(character, '_' | '$')
             };
-            if valid {
-                character
-            } else {
-                '_'
-            }
+            if valid { character } else { '_' }
         })
         .collect();
     if name.is_empty() {
@@ -1156,22 +1152,28 @@ mod tests {
 
     #[test]
     fn deadline_returns_completed_replacements_only() {
-        let fetcher = Arc::new(FakeFetcher::new(Duration::from_millis(50)));
-        let coordinator = DecompileCoordinator::with_fetcher(fetcher, "test-".to_string(), 1, 0);
+        let fetcher = Arc::new(FakeFetcher::new(Duration::ZERO));
+        let coordinator = DecompileCoordinator::with_fetcher(fetcher, "test-".to_string(), 0, 0);
         let uris = vec![unique_uri("deadline-a"), unique_uri("deadline-b")];
         for uri in &uris {
             let _ = fs::remove_file(cached_path(&coordinator, uri));
         }
+
+        let completed_path = cached_path(&coordinator, &uris[0]);
+        fs::create_dir_all(completed_path.parent().unwrap()).unwrap();
+        fs::write(&completed_path, "class Completed {}").unwrap();
 
         let replacements = resolve_uris(
             &coordinator.inner,
             1,
             &uris,
             Priority::Interactive,
-            Instant::now() + Duration::from_millis(70),
+            Instant::now(),
         );
 
         assert_eq!(replacements.len(), 1);
+        assert!(replacements.contains_key(&uris[0]));
+        assert!(!replacements.contains_key(&uris[1]));
         for uri in &uris {
             let _ = fs::remove_file(cached_path(&coordinator, uri));
         }
@@ -1186,18 +1188,20 @@ mod tests {
         let first_uri = unique_uri("blocking-job");
         let second_uri = unique_uri("queued-deadline");
         let (first_tx, _first_rx) = mpsc::channel();
-        assert!(coordinator
-            .submit(RewriteJob {
-                token: 1,
-                message: json!({ "result": [{ "uri": first_uri }] }),
-                mode: RewriteMode::Locations,
-                priority: Priority::Interactive,
-                deadline: Instant::now() + Duration::from_secs(1),
-                complete: Box::new(move |message| {
-                    let _ = first_tx.send(message);
-                }),
-            })
-            .is_ok());
+        assert!(
+            coordinator
+                .submit(RewriteJob {
+                    token: 1,
+                    message: json!({ "result": [{ "uri": first_uri }] }),
+                    mode: RewriteMode::Locations,
+                    priority: Priority::Interactive,
+                    deadline: Instant::now() + Duration::from_secs(1),
+                    complete: Box::new(move |message| {
+                        let _ = first_tx.send(message);
+                    }),
+                })
+                .is_ok()
+        );
         let worker_start_deadline = Instant::now() + Duration::from_secs(1);
         while fetcher.active.load(Ordering::SeqCst) == 0 && Instant::now() < worker_start_deadline {
             thread::sleep(Duration::from_millis(1));
@@ -1206,18 +1210,20 @@ mod tests {
 
         let original = json!({ "result": [{ "uri": second_uri }] });
         let (second_tx, second_rx) = mpsc::channel();
-        assert!(coordinator
-            .submit(RewriteJob {
-                token: 2,
-                message: original.clone(),
-                mode: RewriteMode::Locations,
-                priority: Priority::Interactive,
-                deadline: Instant::now() + Duration::from_millis(20),
-                complete: Box::new(move |message| {
-                    let _ = second_tx.send(message);
-                }),
-            })
-            .is_ok());
+        assert!(
+            coordinator
+                .submit(RewriteJob {
+                    token: 2,
+                    message: original.clone(),
+                    mode: RewriteMode::Locations,
+                    priority: Priority::Interactive,
+                    deadline: Instant::now() + Duration::from_millis(20),
+                    complete: Box::new(move |message| {
+                        let _ = second_tx.send(message);
+                    }),
+                })
+                .is_ok()
+        );
 
         assert_eq!(
             second_rx.recv_timeout(Duration::from_millis(500)).unwrap(),
@@ -1299,20 +1305,24 @@ mod tests {
         let uri = unique_uri("negative-cache");
         let _ = fs::remove_file(cached_path(&coordinator, &uri));
 
-        assert!(rewrite_for_test(
-            &coordinator,
-            1,
-            std::slice::from_ref(&uri),
-            Priority::Interactive
-        )
-        .is_empty());
-        assert!(rewrite_for_test(
-            &coordinator,
-            2,
-            std::slice::from_ref(&uri),
-            Priority::Interactive
-        )
-        .is_empty());
+        assert!(
+            rewrite_for_test(
+                &coordinator,
+                1,
+                std::slice::from_ref(&uri),
+                Priority::Interactive
+            )
+            .is_empty()
+        );
+        assert!(
+            rewrite_for_test(
+                &coordinator,
+                2,
+                std::slice::from_ref(&uri),
+                Priority::Interactive
+            )
+            .is_empty()
+        );
         assert_eq!(fetcher.calls.load(Ordering::Relaxed), 1);
         coordinator.shutdown();
     }
@@ -1364,16 +1374,18 @@ mod tests {
         let fetcher = Arc::new(FakeFetcher::new(Duration::ZERO));
         let coordinator =
             DecompileCoordinator::with_fetcher(fetcher, "queued-cancel-".to_string(), 0, 0);
-        assert!(coordinator
-            .submit(RewriteJob {
-                token: 7,
-                message: json!({ "result": [] }),
-                mode: RewriteMode::Locations,
-                priority: Priority::Bulk,
-                deadline: Instant::now() + Duration::from_secs(1),
-                complete: Box::new(|_| {}),
-            })
-            .is_ok());
+        assert!(
+            coordinator
+                .submit(RewriteJob {
+                    token: 7,
+                    message: json!({ "result": [] }),
+                    mode: RewriteMode::Locations,
+                    priority: Priority::Bulk,
+                    deadline: Instant::now() + Duration::from_secs(1),
+                    complete: Box::new(|_| {}),
+                })
+                .is_ok()
+        );
 
         coordinator.cancel(7);
 
@@ -1391,18 +1403,20 @@ mod tests {
             DecompileCoordinator::with_fetcher(fetcher, "shutdown-".to_string(), 0, 0);
         let original = json!({ "result": [{ "uri": "jdt://contents/test/A.class" }] });
         let (sender, receiver) = mpsc::channel();
-        assert!(coordinator
-            .submit(RewriteJob {
-                token: 8,
-                message: original.clone(),
-                mode: RewriteMode::Locations,
-                priority: Priority::Interactive,
-                deadline: Instant::now() + Duration::from_secs(1),
-                complete: Box::new(move |message| {
-                    let _ = sender.send(message);
-                }),
-            })
-            .is_ok());
+        assert!(
+            coordinator
+                .submit(RewriteJob {
+                    token: 8,
+                    message: original.clone(),
+                    mode: RewriteMode::Locations,
+                    priority: Priority::Interactive,
+                    deadline: Instant::now() + Duration::from_secs(1),
+                    complete: Box::new(move |message| {
+                        let _ = sender.send(message);
+                    }),
+                })
+                .is_ok()
+        );
 
         coordinator.shutdown();
 
@@ -1447,13 +1461,15 @@ mod tests {
         assert_eq!(first, second);
         assert_eq!(first.file_name().unwrap(), "Bad_Name.java");
         assert_eq!(first.extension().unwrap(), "java");
-        assert!(first
-            .parent()
-            .unwrap()
-            .file_name()
-            .unwrap()
-            .to_string_lossy()
-            .starts_with("uri_"));
+        assert!(
+            first
+                .parent()
+                .unwrap()
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("uri_")
+        );
     }
 
     #[test]
@@ -1463,14 +1479,15 @@ mod tests {
         let stem = path.file_stem().unwrap().to_string_lossy();
 
         assert_eq!(stem, "Products$Product$Request");
-        assert!(stem
-            .chars()
-            .enumerate()
-            .all(|(index, character)| if index == 0 {
-                character.is_ascii_alphabetic() || matches!(character, '_' | '$')
-            } else {
-                character.is_ascii_alphanumeric() || matches!(character, '_' | '$')
-            }));
+        assert!(
+            stem.chars()
+                .enumerate()
+                .all(|(index, character)| if index == 0 {
+                    character.is_ascii_alphabetic() || matches!(character, '_' | '$')
+                } else {
+                    character.is_ascii_alphanumeric() || matches!(character, '_' | '$')
+                })
+        );
     }
 
     #[test]
