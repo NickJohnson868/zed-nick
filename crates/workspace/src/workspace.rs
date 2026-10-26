@@ -1594,6 +1594,9 @@ pub struct Workspace {
     last_active_center_pane: Option<WeakEntity<Pane>>,
     last_active_view_id: Option<proto::ViewId>,
     status_bar: Entity<StatusBar>,
+    left_dock_buttons: Entity<PanelButtons>,
+    right_dock_buttons: Entity<PanelButtons>,
+    bottom_dock_buttons: Entity<PanelButtons>,
     pub(crate) modal_layer: Entity<ModalLayer>,
     toast_layer: Entity<ToastLayer>,
     titlebar_item: Option<AnyView>,
@@ -1978,14 +1981,8 @@ impl Workspace {
             .root::<MultiWorkspace>()
             .flatten()
             .map(|mw| mw.downgrade());
-        let status_bar = cx.new(|cx| {
-            let mut status_bar =
-                StatusBar::new(&center_pane.clone(), multi_workspace.clone(), window, cx);
-            status_bar.add_left_item(left_dock_buttons, window, cx);
-            status_bar.add_right_item(right_dock_buttons, window, cx);
-            status_bar.add_right_item(bottom_dock_buttons, window, cx);
-            status_bar
-        });
+        let status_bar =
+            cx.new(|cx| StatusBar::new(&center_pane.clone(), multi_workspace.clone(), window, cx));
 
         let session_id = app_state.session.read(cx).id().to_owned();
 
@@ -2099,6 +2096,9 @@ impl Workspace {
             last_active_center_pane: Some(center_pane.downgrade()),
             last_active_view_id: None,
             status_bar,
+            left_dock_buttons,
+            right_dock_buttons,
+            bottom_dock_buttons,
             modal_layer,
             toast_layer,
             titlebar_item: None,
@@ -2882,6 +2882,27 @@ impl Workspace {
         for dock in [&self.left_dock, &self.bottom_dock, &self.right_dock] {
             dock.update(cx, |dock, cx| dock.remove_panel(panel, window, cx));
         }
+    }
+
+    fn render_tool_rail(&self, left: bool, cx: &App) -> impl IntoElement {
+        v_flex()
+            .h_full()
+            .w(px(45.))
+            .flex_shrink_0()
+            .items_center()
+            .py_1()
+            .gap_1()
+            .bg(cx.theme().colors().status_bar_background)
+            .border_color(cx.theme().colors().border_variant)
+            .when(left, |rail| {
+                rail.border_r_2().child(self.left_dock_buttons.clone())
+            })
+            .when(!left, |rail| {
+                rail.border_l_2()
+                    .child(self.right_dock_buttons.clone())
+                    .child(div().flex_1())
+                    .child(self.bottom_dock_buttons.clone())
+            })
     }
 
     pub fn status_bar(&self) -> &Entity<StatusBar> {
@@ -10171,7 +10192,16 @@ impl Render for Workspace {
                                     }
                                 })
                             }))
-                            .children(self.render_notifications(window, cx)),
+                            .children(self.render_notifications(window, cx))
+                            .map(|workspace| {
+                                h_flex()
+                                    .items_stretch()
+                                    .flex_1()
+                                    .min_h_0()
+                                    .child(self.render_tool_rail(true, cx))
+                                    .child(workspace.h_full())
+                                    .child(self.render_tool_rail(false, cx))
+                            }),
                     )
                     .when(self.status_bar_visible(cx), |parent| {
                         parent.child(self.status_bar.clone())
@@ -19046,6 +19076,39 @@ mod tests {
                 })
                 .await;
             assert!(handle.is_err());
+        }
+    }
+
+    #[gpui::test]
+    async fn test_toolbar_workspace_retains_full_height(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (multi_workspace, cx) =
+            cx.add_window_view(|window, cx| MultiWorkspace::test_new(project, window, cx));
+        let workspace = multi_workspace.read_with(cx, |workspace, _| workspace.workspace().clone());
+        workspace.update_in(cx, |workspace, window, cx| {
+            let panel = cx.new(|cx| TestPanel::new(DockPosition::Left, 100, cx));
+            workspace.add_panel(panel, window, cx);
+        });
+        for (width, height) in [(1280., 800.), (1920., 1080.), (3840., 2076.)] {
+            cx.simulate_resize(gpui::size(px(width), px(height)));
+            cx.update(|window, cx| {
+                window.draw(cx).clear(cx);
+            });
+            cx.run_until_parked();
+            workspace.read_with(cx, |workspace, _| {
+                assert!(
+                    workspace.bounds.size.height > px(height * 0.85),
+                    "workspace must fill the area between the title and status bars: {:?}",
+                    workspace.bounds
+                );
+                assert!(
+                    workspace.bounds.size.width > px(width * 0.85),
+                    "tool rails must leave most of the width for the workspace: {:?}",
+                    workspace.bounds
+                );
+            });
         }
     }
 

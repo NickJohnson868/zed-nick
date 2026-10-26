@@ -6181,13 +6181,13 @@ impl ProjectPanel {
         let depth = details.depth;
         let worktree_id = details.worktree_id;
 
-        let bg_color = if is_marked {
+        let bg_color = if is_marked || is_active {
             item_colors.marked
         } else {
             item_colors.default
         };
 
-        let bg_hover_color = if is_marked {
+        let bg_hover_color = if is_marked || is_active {
             item_colors.marked
         } else {
             item_colors.hover
@@ -6208,7 +6208,11 @@ impl ProjectPanel {
             None
         };
 
-        let show_focused_border = !self.mouse_down && is_active && self.contains_focus(window, cx);
+        let show_focused_border = show_editor
+            && validation_color_and_message.is_some()
+            && !self.mouse_down
+            && is_active
+            && self.contains_focus(window, cx);
 
         let border_color = if show_focused_border {
             match validation_color_and_message {
@@ -7785,10 +7789,12 @@ impl Render for ProjectPanel {
                             })
                             .when(show_indent_guides, |list| {
                                 list.with_decoration(
-                                    ui::indent_guides(
-                                        px(indent_size),
-                                        IndentGuideColors::panel(cx),
-                                    )
+                                    ui::indent_guides(px(indent_size), {
+                                        let mut colors = IndentGuideColors::panel(cx);
+                                        colors.default = colors.default.opacity(0.45);
+                                        colors.active = colors.active.opacity(0.65);
+                                        colors
+                                    })
                                     .with_compute_indents_fn(
                                         cx.entity(),
                                         |this, range, window, cx| {
@@ -7857,11 +7863,20 @@ impl Render for ProjectPanel {
                                             let indent_size = params.indent_size;
                                             let item_height = params.item_height;
 
+                                            let selected_row =
+                                                this.selection.and_then(|selection| {
+                                                    this.index_for_entry(
+                                                        selection.entry_id,
+                                                        selection.worktree_id,
+                                                    )
+                                                    .map(|(_, _, index)| index)
+                                                });
+
                                             params
                                                 .indent_guides
                                                 .into_iter()
                                                 .enumerate()
-                                                .map(|(idx, layout)| {
+                                                .flat_map(|(idx, layout)| {
                                                     let offset = if layout.continues_offscreen {
                                                         px(0.)
                                                     } else {
@@ -7879,23 +7894,61 @@ impl Render for ProjectPanel {
                                                                 - offset * 2.,
                                                         ),
                                                     );
-                                                    ui::RenderedIndentGuide {
-                                                        bounds,
-                                                        layout,
-                                                        is_active: Some(idx)
-                                                            == active_indent_guide_index,
-                                                        hitbox: Some(Bounds::new(
-                                                            point(
-                                                                bounds.origin.x - HITBOX_OVERDRAW,
-                                                                bounds.origin.y,
-                                                            ),
-                                                            size(
-                                                                bounds.size.width
-                                                                    + HITBOX_OVERDRAW * 2.,
-                                                                bounds.size.height,
-                                                            ),
-                                                        )),
+                                                    let mut segments = vec![bounds];
+                                                    if let Some(row) = selected_row {
+                                                        let top = row * item_height;
+                                                        let bottom = top + item_height;
+                                                        let guide_bottom =
+                                                            bounds.origin.y + bounds.size.height;
+                                                        if top < guide_bottom
+                                                            && bottom > bounds.origin.y
+                                                        {
+                                                            segments.clear();
+                                                            if top > bounds.origin.y {
+                                                                segments.push(Bounds::new(
+                                                                    bounds.origin,
+                                                                    size(
+                                                                        bounds.size.width,
+                                                                        top - bounds.origin.y,
+                                                                    ),
+                                                                ));
+                                                            }
+                                                            if bottom < guide_bottom {
+                                                                segments.push(Bounds::new(
+                                                                    point(bounds.origin.x, bottom),
+                                                                    size(
+                                                                        bounds.size.width,
+                                                                        guide_bottom - bottom,
+                                                                    ),
+                                                                ));
+                                                            }
+                                                        }
                                                     }
+                                                    segments.into_iter().map(move |bounds| {
+                                                        ui::RenderedIndentGuide {
+                                                            bounds,
+                                                            layout: IndentGuideLayout {
+                                                                offset: layout.offset,
+                                                                length: layout.length,
+                                                                continues_offscreen: layout
+                                                                    .continues_offscreen,
+                                                            },
+                                                            is_active: Some(idx)
+                                                                == active_indent_guide_index,
+                                                            hitbox: Some(Bounds::new(
+                                                                point(
+                                                                    bounds.origin.x
+                                                                        - HITBOX_OVERDRAW,
+                                                                    bounds.origin.y,
+                                                                ),
+                                                                size(
+                                                                    bounds.size.width
+                                                                        + HITBOX_OVERDRAW * 2.,
+                                                                    bounds.size.height,
+                                                                ),
+                                                            )),
+                                                        }
+                                                    })
                                                 })
                                                 .collect()
                                         },

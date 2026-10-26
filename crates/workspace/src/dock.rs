@@ -16,10 +16,7 @@ use gpui::{
 use serde::{Deserialize, Serialize};
 use settings::{Settings, SettingsStore, TerminalDockPosition};
 use std::sync::Arc;
-use ui::{
-    ContextMenu, CountBadge, Divider, DividerColor, IconButton, Tooltip, prelude::*,
-    right_click_menu,
-};
+use ui::{ContextMenu, CountBadge, IconButton, TintColor, Tooltip, prelude::*, right_click_menu};
 use util::ResultExt as _;
 
 pub(crate) const RESIZE_HANDLE_SIZE: Pixels = px(6.);
@@ -1395,13 +1392,14 @@ impl Render for PanelButtons {
         let dock_position = dock.position;
 
         let (menu_anchor, menu_attach) = match dock.position {
-            DockPosition::Left => (Anchor::BottomLeft, Anchor::TopLeft),
-            DockPosition::Bottom | DockPosition::Right => (Anchor::BottomRight, Anchor::TopRight),
+            DockPosition::Left => (Anchor::TopLeft, Anchor::TopRight),
+            DockPosition::Right => (Anchor::TopRight, Anchor::TopLeft),
+            DockPosition::Bottom => (Anchor::BottomRight, Anchor::BottomLeft),
         };
 
         let dock_entity = self.dock.clone();
         let workspace = dock.workspace.clone();
-        let mut buttons: Vec<_> = dock
+        let buttons: Vec<_> = dock
             .panel_entries
             .iter()
             .enumerate()
@@ -1530,12 +1528,13 @@ impl Render for PanelButtons {
                         })
                         .anchor(menu_anchor)
                         .attach(menu_attach)
-                        .trigger(move |is_active, _window, _cx| {
+                        .trigger(move |is_active, window, cx| {
                             // Include active state in element ID to invalidate the cached
                             // tooltip when panel state changes (e.g., via keyboard shortcut)
                             let button = IconButton::new((name, is_active_button as u64), icon)
-                                .icon_size(IconSize::Small)
+                                .icon_size(IconSize::Custom(rems(1.25)))
                                 .toggle_state(is_active_button)
+                                .selected_style(ButtonStyle::Tinted(TintColor::Accent))
                                 .tab_index(0isize)
                                 .aria_label(icon_tooltip)
                                 .on_click({
@@ -1551,7 +1550,12 @@ impl Render for PanelButtons {
                                     })
                                 });
 
-                            div().relative().child(button).when_some(
+                            let button = button
+                                .render(window, cx)
+                                .width(px(35.))
+                                .height(px(35.).into());
+
+                            div().relative().flex_shrink_0().child(button).when_some(
                                 icon_label
                                     .clone()
                                     .filter(|_| !is_active_button)
@@ -1563,24 +1567,7 @@ impl Render for PanelButtons {
             })
             .collect();
 
-        if dock_position == DockPosition::Right {
-            buttons.reverse();
-        }
-
-        let has_buttons = !buttons.is_empty();
-
-        h_flex()
-            .gap_1()
-            .when(
-                has_buttons
-                    && (dock.position == DockPosition::Bottom
-                        || dock.position == DockPosition::Right),
-                |this| this.child(Divider::vertical().color(DividerColor::Border)),
-            )
-            .children(buttons)
-            .when(has_buttons && dock.position == DockPosition::Left, |this| {
-                this.child(Divider::vertical().color(DividerColor::Border))
-            })
+        v_flex().items_center().gap_1().children(buttons)
     }
 }
 

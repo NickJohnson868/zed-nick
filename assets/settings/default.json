@@ -7,9 +7,9 @@
   // - "light": Use the theme indicated by the "light" field
   // - "dark": Use the theme indicated by the "dark" field
   "theme": {
-    "mode": "system",
+    "mode": "dark",
     "light": "One Light",
-    "dark": "One Dark",
+    "dark": "IDEA Islands Dark 2026",
   },
   "icon_theme": "Zed (Default)",
   // The name of a base set of key bindings to use.
@@ -887,7 +887,7 @@
     // Default width of the project panel.
     "default_width": 240,
     // Where to dock the project panel. Can be 'left' or 'right'.
-    "dock": "right",
+    "dock": "left",
     // Spacing between worktree entries in the project panel. Can be 'comfortable' or 'standard'.
     "entry_spacing": "comfortable",
     // Whether to show file icons in the project panel.
@@ -1178,7 +1178,7 @@
     // Whether to show the agent panel button in the status bar.
     "button": true,
     // Where to dock the agent panel. Can be 'left', 'right' or 'bottom'.
-    "dock": "left",
+    "dock": "right",
     // Whether the agent panel should use flexible (proportional) sizing when docked
     // to the left or right. When enabled, `default_width` does not control the panel
     // width, and resetting the panel restores the default proportion.
