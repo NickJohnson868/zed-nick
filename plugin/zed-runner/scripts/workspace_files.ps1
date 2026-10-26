@@ -102,7 +102,7 @@ function Get-WorkspaceFiles([string]$Root, [switch]$StrictFallback) {
 
     $filtered = [Collections.Generic.List[string]]::new()
     foreach ($path in $paths) {
-        $parent = [IO.Path]::GetDirectoryName($path.Replace('/','\'))
+        $parent = [IO.Path]::GetDirectoryName($path.Replace('/',[IO.Path]::DirectorySeparatorChar))
         $relativeParent = if ($parent) { $parent.Replace('\','/') } else { '' }
         if ((Is-InScanDirectory $relativeParent) -and
             (!$relativeParent -or !(Is-IgnoredDirectory $relativeParent))) { $filtered.Add($path) }

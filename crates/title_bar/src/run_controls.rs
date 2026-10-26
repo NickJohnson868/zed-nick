@@ -23,7 +23,7 @@ impl TitleBar {
             return;
         };
         let worktree = worktree.read(cx);
-        if !worktree.is_local() || !cfg!(windows) {
+        if !worktree.is_local() {
             return;
         }
         let root = worktree.abs_path().to_path_buf();
@@ -88,7 +88,7 @@ impl TitleBar {
     pub(super) fn render_run_controls(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let worktree = self.effective_active_worktree(cx)?;
         let tree = worktree.read(cx);
-        if !tree.is_local() || !cfg!(windows) {
+        if !tree.is_local() {
             return None;
         }
         let root = tree.abs_path().to_path_buf();

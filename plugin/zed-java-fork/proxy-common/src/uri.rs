@@ -1,4 +1,4 @@
-use percent_encoding::{percent_decode_str, utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
+use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, percent_decode_str, utf8_percent_encode};
 use std::path::{Path, PathBuf};
 
 const PATH_ENCODE_SET: AsciiSet = NON_ALPHANUMERIC
@@ -99,11 +99,27 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))]
     fn converts_unix_file_uri_back_to_path() {
         assert_eq!(
             file_uri_to_path("file:///tmp/Java%20Sources/String.java").as_deref(),
             Some(Path::new("/tmp/Java Sources/String.java"))
         );
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn converts_windows_file_uris_back_to_paths() {
+        for path in [
+            r"C:\Users\Jane Doe\中文.java",
+            r"\\server\share\A File.java",
+        ] {
+            let path = Path::new(path);
+            assert_eq!(
+                file_uri_to_path(&path_to_file_uri(path)).as_deref(),
+                Some(path)
+            );
+        }
     }
 
     #[test]

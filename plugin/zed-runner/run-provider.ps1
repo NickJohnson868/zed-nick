@@ -6,6 +6,7 @@ $config = if (Test-Path -LiteralPath $configPath) { Get-Content -LiteralPath $co
 $entries = [Collections.Generic.List[object]]::new()
 $warnings = [Collections.Generic.List[string]]::new()
 $powerShellExecutable = (Get-Process -Id $PID).Path
+. "$PSScriptRoot/scripts/platform.ps1"
 . "$PSScriptRoot/scripts/workspace_files.ps1"
 try {
     $files = @(Get-WorkspaceFiles $Root)
@@ -31,8 +32,8 @@ function Java-Runtime {
     if (!$jdkDirectory) { return $null }
     if (![IO.Path]::IsPathFullyQualified($jdkDirectory) -or
         !(Test-Path -LiteralPath $jdkDirectory -PathType Container) -or
-        !(Test-Path -LiteralPath (Join-Path $jdkDirectory 'bin/java.exe') -PathType Leaf)) {
-        $warnings.Add('java.runtime 必须是包含 bin/java.exe 的 JDK 绝对目录；已跳过 Java 入口')
+        !(Test-Path -LiteralPath (Join-Path $jdkDirectory $runnerJavaRelativePath) -PathType Leaf)) {
+        $warnings.Add("java.runtime 必须是包含 $runnerJavaRelativePath 的 JDK 绝对目录；已跳过 Java 入口")
         return $null
     }
     return [IO.Path]::GetFullPath($jdkDirectory)
@@ -41,7 +42,7 @@ function Maven-Runtime {
     $path = [string]$config.environments.java.build_tool
     if (!$path) { return $null }
     if ([IO.Path]::IsPathFullyQualified($path) -and (Test-Path -LiteralPath $path -PathType Container)) {
-        foreach ($name in @('bin/mvnd.exe','bin/mvn.cmd','mvnd.exe','mvn.cmd')) {
+        foreach ($name in $(if ($IsWindows) { @('bin/mvnd.exe','bin/mvn.cmd','mvnd.exe','mvn.cmd') } else { @('bin/mvnd','bin/mvn','mvnd','mvn') })) {
             $candidate = Join-Path $path $name
             if (Test-Path -LiteralPath $candidate -PathType Leaf) { return [IO.Path]::GetFullPath($candidate) }
         }
@@ -58,9 +59,9 @@ function Environment([string]$Language) {
 }
 function Local-Python([string]$ScriptPath) {
     $directory = [IO.Path]::GetDirectoryName($ScriptPath)
-    while ($directory -and $directory.StartsWith($Root, [StringComparison]::OrdinalIgnoreCase)) {
+    while ($directory -and (Test-RunnerPathWithin $directory $Root)) {
         foreach ($name in @('.venv', 'venv')) {
-            $candidate = Join-Path $directory "$name/Scripts/python.exe"
+            $candidate = Join-Path $directory "$name/$runnerPythonRelativePath"
             if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
         }
         if ($directory -eq $Root) { break }
@@ -70,7 +71,7 @@ function Local-Python([string]$ScriptPath) {
 }
 function Python-Project([string]$ScriptPath) {
     $directory = [IO.Path]::GetDirectoryName($ScriptPath)
-    while ($directory -and $directory.StartsWith($Root, [StringComparison]::OrdinalIgnoreCase)) {
+    while ($directory -and (Test-RunnerPathWithin $directory $Root)) {
         if ((Test-Path -LiteralPath (Join-Path $directory 'pyproject.toml') -PathType Leaf) -or
             (Test-Path -LiteralPath (Join-Path $directory 'requirements.txt') -PathType Leaf)) {
             return $directory
@@ -82,6 +83,10 @@ function Python-Project([string]$ScriptPath) {
 }
 function Add-Entry([string]$Id, [string]$Language, [string]$File, [string]$Label, [string]$Command,
                    [string[]]$Arguments, [hashtable]$Variables, [string[]]$Extensions, $DebugConfig) {
+    if (!$IsWindows -and !$Variables.ContainsKey('PATH')) {
+        $directories = @([IO.Path]::GetDirectoryName($Command),'/opt/homebrew/bin','/usr/local/bin') + @($env:PATH -split [regex]::Escape([string][IO.Path]::PathSeparator))
+        $Variables.PATH = (@($directories | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Container) } | Select-Object -Unique) -join [IO.Path]::PathSeparator)
+    }
     $taskCommand = "& '" + $Command.Replace("'", "''") + "'"
     $taskArguments = @($Arguments | ForEach-Object { "'" + $_.Replace("'", "''") + "'" })
     $taskArguments += '; exit $LASTEXITCODE'
@@ -125,15 +130,15 @@ foreach ($file in @($files | Where-Object { $_ -like '*.py' -and $_ -notmatch '(
     $hasPyproject = $projectDirectory -and (Test-Path -LiteralPath (Join-Path $projectDirectory 'pyproject.toml') -PathType Leaf)
     $hasRequirements = $projectDirectory -and (Test-Path -LiteralPath (Join-Path $projectDirectory 'requirements.txt') -PathType Leaf)
     if ($hasPyproject -and !$uvRuntime) {
-        if (!$warnings.Contains('扫描 pyproject.toml 需要在 python.uv 中配置 uv.exe 的绝对路径')) {
-            $warnings.Add('扫描 pyproject.toml 需要在 python.uv 中配置 uv.exe 的绝对路径')
+        if (!$warnings.Contains('扫描 pyproject.toml 需要在 python.uv 中配置 uv 的绝对路径')) {
+            $warnings.Add('扫描 pyproject.toml 需要在 python.uv 中配置 uv 的绝对路径')
         }
         $skippedPython.Add($file)
         continue
     }
     if ($hasRequirements -and !$pythonBase) {
-        if (!$warnings.Contains('扫描 requirements.txt 需要在 python.runtime 中配置 python.exe 的绝对路径')) {
-            $warnings.Add('扫描 requirements.txt 需要在 python.runtime 中配置 python.exe 的绝对路径')
+        if (!$warnings.Contains('扫描 requirements.txt 需要在 python.runtime 中配置 Python 可执行文件的绝对路径')) {
+            $warnings.Add('扫描 requirements.txt 需要在 python.runtime 中配置 Python 可执行文件的绝对路径')
         }
         $skippedPython.Add($file)
         continue
@@ -143,7 +148,7 @@ foreach ($file in @($files | Where-Object { $_ -like '*.py' -and $_ -notmatch '(
         continue
     }
     $runtime = Local-Python $absolute
-    if (!$runtime -and $projectDirectory) { $runtime = Join-Path $projectDirectory '.venv/Scripts/python.exe' }
+    if (!$runtime -and $projectDirectory) { $runtime = Join-Path $projectDirectory ".venv/$runnerPythonRelativePath" }
     if (!$runtime) { $runtime = $pythonBase }
     if (!$runtime) {
         $skippedPython.Add($file)
@@ -156,8 +161,8 @@ foreach ($file in @($files | Where-Object { $_ -like '*.py' -and $_ -notmatch '(
         $prepareArgs = @('-NoLogo','-NoProfile','-File',"$PSScriptRoot/scripts/run_python.ps1",'-Project',$projectDirectory,'-Python',$runtime)
         if ($uvRuntime) { $prepareArgs += @('-Uv',$uvRuntime) }
         if ($pythonBase) { $prepareArgs += @('-BasePython',$pythonBase) }
-        $debug.build = @{ command='pwsh'; args=@($prepareArgs); cwd=$projectDirectory; env=$environment }
-        Add-Entry "python:$file" 'python' $file "Python · $file" 'pwsh' @($prepareArgs + @('-Script',$absolute)) $environment @('py') $debug
+        $debug.build = @{ command=$powerShellExecutable; args=@($prepareArgs); cwd=$projectDirectory; env=$environment }
+        Add-Entry "python:$file" 'python' $file "Python · $file" $powerShellExecutable @($prepareArgs + @('-Script',$absolute)) $environment @('py') $debug
     } else {
         Add-Entry "python:$file" 'python' $file "Python · $file" $runtime @($absolute) $environment @('py') $debug
     }
@@ -183,7 +188,7 @@ foreach ($file in @($files | Where-Object { $_ -like '*.java' })) {
     $main = if ($package) { "$package.$class" } else { $class }
     $module = $null
     $parent = [IO.Path]::GetDirectoryName($absolute)
-    while ($parent -and $parent.StartsWith($Root,[StringComparison]::OrdinalIgnoreCase)) {
+    while ($parent -and (Test-RunnerPathWithin $parent $Root)) {
         $pom = Join-Path $parent 'pom.xml'
         if (Test-Path -LiteralPath $pom) { $module = $pom; break }
         $parent = [IO.Path]::GetDirectoryName($parent)
@@ -217,23 +222,23 @@ foreach ($file in @($files | Where-Object { $_ -like '*.java' })) {
                 cwd=$Root; env=$debugEnvironment; encoding='UTF-8';
                 vmArgs=@('-Dfile.encoding=UTF-8','-Dstdout.encoding=UTF-8','-Dstderr.encoding=UTF-8') + $jvmArguments }
     if ($programArguments.Count) { $debug.args = $programArguments }
-    $debug.javaExec = Join-Path $javaHome 'bin/java.exe'
+    $debug.javaExec = Join-Path $javaHome $runnerJavaRelativePath
     if ($module) {
         $moduleDirectory = Split-Path $module -Parent
         $classpathFile = Join-Path $moduleDirectory 'target/zed-run-classpath.txt'
         if ((Test-Path -LiteralPath $classpathFile -PathType Leaf) -and
             (Test-Path -LiteralPath (Join-Path $moduleDirectory 'target/classes') -PathType Container)) {
             $classpathEntries = @([IO.Path]::Combine($moduleDirectory,'target','classes')) +
-                @(([IO.File]::ReadAllText($classpathFile).Trim() -split ';') | Where-Object { $_ })
+                @(([IO.File]::ReadAllText($classpathFile).Trim() -split [regex]::Escape([string][IO.Path]::PathSeparator)) | Where-Object { $_ })
             if (!@($classpathEntries | Where-Object { !(Test-Path -LiteralPath $_) }).Count) {
                 $debug.classPaths = $classpathEntries
             }
         }
-        $debug.build = @{ command='pwsh'; args=@('-NoLogo','-NoProfile','-File',"$PSScriptRoot/scripts/run_java.ps1",'-BuildOnly'); cwd=$Root; env=$environment }
+        $debug.build = @{ command=$powerShellExecutable; args=@('-NoLogo','-NoProfile','-File',"$PSScriptRoot/scripts/run_java.ps1",'-BuildOnly'); cwd=$Root; env=$environment }
     } else {
         $debug = $null
     }
-    Add-Entry "java:$file" 'java' $file "Java · $main" 'pwsh' @('-NoLogo','-NoProfile','-File',"$PSScriptRoot/scripts/run_java.ps1") $environment @('java') $debug
+    Add-Entry "java:$file" 'java' $file "Java · $main" $powerShellExecutable @('-NoLogo','-NoProfile','-File',"$PSScriptRoot/scripts/run_java.ps1") $environment @('java') $debug
 }
 $npmRuntime = Runtime 'javascript'
 foreach ($file in @($files | Where-Object { $_ -match '(^|/)package\.json$' })) {

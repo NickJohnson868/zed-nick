@@ -1,7 +1,7 @@
 #requires -Version 7.0
 param(
-    [string]$Npm = (Get-Command npm.cmd -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source,
-    [string]$Python = (Get-Command python.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source,
+    [string]$Npm = (Get-Command $(if ($IsWindows) { 'npm.cmd' } else { 'npm' }) -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source,
+    [string]$Python = (Get-Command $(if ($IsWindows) { 'python.exe' } else { 'python3' }) -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source,
     [string]$JavaHome,
     [string]$Go
 )
@@ -79,6 +79,15 @@ $pythonResult = Invoke-GeneratedTask $pythonTask.task
 if ($pythonResult.code -ne 0 -or !$pythonResult.output.Contains('PYTHON_TASK_OK')) {
     throw "Quoted Python path failed: $($pythonResult.output)"
 }
+& $Python -m venv --without-pip (Join-Path $root '.venv')
+if ($LASTEXITCODE -ne 0) { throw 'Fixture virtual environment creation failed' }
+Add-Content -LiteralPath (Join-Path $root $pythonFile) -Value "import sys; print('VENV_ROOT=' + sys.prefix)"
+$venvEntries = & $provider -Root $root | ConvertFrom-Json
+$venvTask = $venvEntries.entries | Where-Object id -eq "python:$pythonFile"
+$venvResult = Invoke-GeneratedTask $venvTask.task
+if ($venvResult.code -ne 0 -or !$venvResult.output.Contains('VENV_ROOT=' + (Join-Path $root '.venv'))) {
+    throw "Native virtual environment path failed: $($venvResult.output)"
+}
 if ($JavaHome) {
     $javaTask = $result.entries | Where-Object language -eq 'java'
     if (!$javaTask) { throw 'Java task was not discovered' }
@@ -94,6 +103,7 @@ if ($Go) {
     if ($goResult.code -ne 0 -or !$goResult.output.Contains('GO_TASK_OK')) { throw "Go task failed: $($goResult.output)" }
 }
 Write-Host 'Passed: npm runtime path, working directory with spaces/apostrophe, literal script path, and nonzero exit code.'
+Write-Host 'Passed: Python global interpreter and native virtual environment layout.'
 if ($JavaHome) { Write-Host 'Passed: Java source launch and literal application argument through the generated PowerShell task.' }
 if ($Go) { Write-Host 'Passed: Go module launch through the generated task.' }
 Write-Host "Temporary fixture: $root"

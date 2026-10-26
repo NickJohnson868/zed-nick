@@ -1,7 +1,7 @@
 //! Converts the Gradle build model into the commands consumed by the Gradle
 //! Language Server.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::proto::gradle::GradleProject;
 
@@ -121,9 +121,12 @@ mod tests {
         assert_eq!(commands[0].0, "gradle.setPlugins");
         assert_eq!(commands[1].0, "gradle.setClosures");
         assert_eq!(commands[2].0, "gradle.setScriptClasspaths");
-        assert_eq!(commands[0].1[0], "/p");
+        assert_eq!(commands[0].1[0], if cfg!(windows) { r"\p" } else { "/p" });
         assert_eq!(commands[0].1[1][0], "java");
-        assert_eq!(commands[3].1[0], "/p/sub");
+        assert_eq!(
+            commands[3].1[0],
+            if cfg!(windows) { r"\p\sub" } else { "/p/sub" }
+        );
     }
 
     #[test]
@@ -139,6 +142,9 @@ mod tests {
 
     #[test]
     fn normalizes_dot_segments() {
-        assert_eq!(normalize_project_path("/p/./sub/../sub"), "/p/sub");
+        assert_eq!(
+            normalize_project_path("/p/./sub/../sub"),
+            if cfg!(windows) { r"\p\sub" } else { "/p/sub" }
+        );
     }
 }

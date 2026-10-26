@@ -1,0 +1,59 @@
+name: Personal plugin platforms
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'plugin/**'
+      - 'crates/title_bar/src/run_*.rs'
+      - '.github/workflows/personal-plugin-platforms.yml'
+  pull_request:
+    paths:
+      - 'plugin/**'
+      - 'crates/title_bar/src/run_*.rs'
+      - '.github/workflows/personal-plugin-platforms.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  runtime:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Launch generated tasks
+        run: ./plugin/zed-runner/tests/task_command_smoke.ps1 -JavaHome $env:JAVA_HOME
+      - name: Launch Java modules and reuse cache
+        run: ./plugin/zed-runner/tests/java_module_smoke.ps1 -JavaHome $env:JAVA_HOME
+      - name: Check whitelist and Git ignores
+        run: ./plugin/zed-runner/tests/scan_smoke.ps1
+      - name: Check platform installation layout
+        run: ./plugin/zed-runner/tests/install_smoke.ps1
+      - name: Check MyBatis native server and portable extension
+        run: |
+          cargo test --locked --manifest-path plugin/zed-mybatis-jump/Cargo.toml -p mybatis-jump-lsp
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          rustup target add wasm32-wasip2
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo check --locked --manifest-path plugin/zed-mybatis-jump/Cargo.toml -p zed-mybatis-jump --target wasm32-wasip2
+      - name: Check Java native components and portable extension
+        run: |
+          cargo test --locked --manifest-path plugin/zed-java-fork/Cargo.toml -p proxy-common -p java-lsp-proxy -p gradle-lsp-bridge
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo check --locked --manifest-path plugin/zed-java-fork/Cargo.toml -p zed_java --target wasm32-wasip2

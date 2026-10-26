@@ -22,7 +22,7 @@ $ready = (Test-Path -LiteralPath $Python -PathType Leaf) -and
 if (!$ready) {
     if (Test-Path -LiteralPath $pyproject -PathType Leaf) {
         if (!$Uv -or ![IO.Path]::IsPathFullyQualified($Uv) -or !(Test-Path -LiteralPath $Uv -PathType Leaf)) {
-            throw 'pyproject.toml 需要配置现有 uv.exe 的绝对路径。'
+            throw 'pyproject.toml 需要配置现有 uv 的绝对路径。'
         }
         $previousEnvironment = $env:UV_PROJECT_ENVIRONMENT
         try {
@@ -37,7 +37,7 @@ if (!$ready) {
     }
     if (Test-Path -LiteralPath $requirements -PathType Leaf) {
         if (!$BasePython -or ![IO.Path]::IsPathFullyQualified($BasePython) -or !(Test-Path -LiteralPath $BasePython -PathType Leaf)) {
-            throw 'requirements.txt 需要配置现有 python.exe 的绝对路径。'
+            throw 'requirements.txt 需要配置现有 Python 的绝对路径。'
         }
         if (!(Test-Path -LiteralPath $Python -PathType Leaf)) {
             & $BasePython -m venv $venv
@@ -45,7 +45,7 @@ if (!$ready) {
         }
         if ($Uv) {
             if (![IO.Path]::IsPathFullyQualified($Uv) -or !(Test-Path -LiteralPath $Uv -PathType Leaf)) {
-                throw 'python.uv 必须是现有 uv.exe 的绝对路径。'
+                throw 'python.uv 必须是现有 uv 的绝对路径。'
             }
             & $Uv pip install --python $Python -r $requirements
             if ($LASTEXITCODE -ne 0) { throw "uv 安装 requirements.txt 失败：$requirements" }

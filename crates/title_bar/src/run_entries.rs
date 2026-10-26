@@ -59,11 +59,32 @@ fn providers() -> Result<Vec<PathBuf>> {
     Ok(providers)
 }
 
+fn provider_shell() -> PathBuf {
+    if let Some(path) = std::env::var_os("PATH") {
+        for directory in std::env::split_paths(&path) {
+            let candidate = directory.join(if cfg!(windows) { "pwsh.exe" } else { "pwsh" });
+            if candidate.is_file() {
+                return candidate;
+            }
+        }
+    }
+    for path in [
+        "/opt/homebrew/bin/pwsh",
+        "/usr/local/bin/pwsh",
+        "/usr/bin/pwsh",
+    ] {
+        if Path::new(path).is_file() {
+            return PathBuf::from(path);
+        }
+    }
+    PathBuf::from("pwsh")
+}
+
 pub fn config_template() -> Result<String> {
     for provider in providers()? {
         let generator = provider.join(TEMPLATE_SCRIPT);
         if generator.is_file() {
-            let output = std::process::Command::new("pwsh")
+            let output = std::process::Command::new(provider_shell())
                 .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-File"])
                 .arg(&generator)
                 .output()
@@ -100,7 +121,7 @@ pub async fn discover(root: &Path) -> Result<Discovery> {
     }
     for provider in providers {
         let script = provider.join(PROVIDER_SCRIPT);
-        let output = util::command::new_command("pwsh")
+        let output = util::command::new_command(provider_shell())
             .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-File"])
             .arg(&script)
             .arg("-Root")
@@ -109,7 +130,12 @@ pub async fn discover(root: &Path) -> Result<Discovery> {
             .kill_on_drop(true)
             .output()
             .await
-            .with_context(|| format!("无法启动运行入口扩展：{}", provider.display()))?;
+            .with_context(|| {
+                format!(
+                    "无法启动运行入口扩展（需要 PowerShell 7 / pwsh）：{}",
+                    provider.display()
+                )
+            })?;
         ensure!(
             output.status.success(),
             "运行入口扩展失败（{}）：{}",

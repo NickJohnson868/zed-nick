@@ -6,6 +6,7 @@ $OutputEncoding = [Console]::OutputEncoding
 $argumentFile = $null
 $mutex = $null
 $locked = $false
+. "$PSScriptRoot/platform.ps1"
 . "$PSScriptRoot/workspace_files.ps1"
 
 function Get-InputStamp([string]$Root, [string[]]$Modules, [string]$Identity) {
@@ -20,12 +21,12 @@ function Get-InputStamp([string]$Root, [string[]]$Modules, [string]$Identity) {
             $inScope = !$Modules.Count
             if ($source -and !$inScope) {
                 foreach ($module in $Modules) {
-                    if ($item.FullName.StartsWith($module.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)) { $inScope=$true; break }
+                    if ((Test-RunnerPathWithin $item.FullName $module)) { $inScope=$true; break }
                 }
             }
             if ($item.Name -eq 'pom.xml' -or ($inScope -and $source) -or $relative.StartsWith('.mvn/') -or $item.Name -in @('mvnw','mvnw.cmd')) { $files.Add($item.FullName) }
         }
-        foreach ($path in @((Join-Path $Root 'pom.xml'),(Join-Path $Root '.zed/run-config.json'),(Join-Path $Root '.zed/run-environments.json'),(Join-Path $Root '.zed/runner-ignore.json'),(Join-Path $env:USERPROFILE '.m2/settings.xml'),(Join-Path $env:USERPROFILE '.m2/toolchains.xml'))) {
+        foreach ($path in @((Join-Path $Root 'pom.xml'),(Join-Path $Root '.zed/run-config.json'),(Join-Path $Root '.zed/run-environments.json'),(Join-Path $Root '.zed/runner-ignore.json'),(Join-Path $runnerHome '.m2/settings.xml'),(Join-Path $runnerHome '.m2/toolchains.xml'))) {
             if (Test-Path -LiteralPath $path -PathType Leaf) { $files.Add($path) }
         }
         $files.Sort([StringComparer]::Ordinal)
@@ -76,15 +77,15 @@ try {
         throw '请在 java.runtime 中配置 JDK 的绝对目录。'
     }
     $env:JAVA_HOME=$java
-    $java=Join-Path $java 'bin/java.exe'
-    if (!(Test-Path -LiteralPath $java -PathType Leaf)) { throw "JDK 缺少 bin/java.exe：$env:JAVA_HOME" }
+    $java=Join-Path $java $runnerJavaRelativePath
+    if (!(Test-Path -LiteralPath $java -PathType Leaf)) { throw "JDK 缺少 $runnerJavaRelativePath：$env:JAVA_HOME" }
     $env:PATH=(Join-Path $env:JAVA_HOME 'bin')+[IO.Path]::PathSeparator+$env:PATH
     $javaArguments=@('-Dfile.encoding=UTF-8','-Dstdout.encoding=UTF-8','-Dstderr.encoding=UTF-8')+@($entry.jvmArgs)
-    if ([Diagnostics.FileVersionInfo]::GetVersionInfo($java).FileMajorPart -ge 17 -and !@($javaArguments | Where-Object { $_ -like '--enable-native-access*' }).Count) { $javaArguments+='--enable-native-access=ALL-UNNAMED' }
+    if ($IsWindows -and [Diagnostics.FileVersionInfo]::GetVersionInfo($java).FileMajorPart -ge 17 -and !@($javaArguments | Where-Object { $_ -like '--enable-native-access*' }).Count) { $javaArguments+='--enable-native-access=ALL-UNNAMED' }
     if ($entry.module) {
         $modulePom=[IO.Path]::GetFullPath([string]$entry.module)
         $moduleDirectory=Split-Path $modulePom -Parent
-        if ($moduleDirectory -ne $root -and !$moduleDirectory.StartsWith($root.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)) { throw '启动模块必须位于当前项目内。' }
+        if (!(Test-RunnerPathWithin $moduleDirectory $root)) { throw '启动模块必须位于当前项目内。' }
         $maven=[string]$entry.maven
         if (![IO.Path]::IsPathFullyQualified($maven) -or !(Test-Path -LiteralPath $maven -PathType Leaf)) {
             throw '请在 java.build_tool 中配置 Maven/MVND 可执行文件的绝对路径。'
@@ -95,8 +96,9 @@ try {
         $classes=Join-Path $target 'classes'
         $mainClassFile=Join-Path $classes (([string]$entry.class).Replace('.','/')+'.class')
         $identity="$java|$((Get-Item -LiteralPath $java).LastWriteTimeUtc.Ticks)|$maven|$env:MAVEN_OPTS|$env:JAVA_TOOL_OPTIONS|$env:JDK_JAVA_OPTIONS"
-        $lockKey=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($root.ToLowerInvariant())))
-        $mutex=[Threading.Mutex]::new($false,"Local\zed-java-build-$lockKey")
+        $lockKey=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($(if ($IsWindows) { $root.ToLowerInvariant() } else { $root }))))
+        $mutexName = if ($IsWindows) { "Local\zed-java-build-$lockKey" } else { "zed-java-build-$lockKey" }
+        $mutex=[Threading.Mutex]::new($false,$mutexName)
         try { $locked=$mutex.WaitOne([TimeSpan]::FromSeconds(5)) } catch [Threading.AbandonedMutexException] { $locked=$true }
         if (!$locked) { throw '当前项目正在构建，请等待后再运行。' }
         $state=$null
@@ -142,8 +144,8 @@ try {
         $argumentFile=Join-Path $target ('zed-java-arguments-'+[Guid]::NewGuid().ToString('N')+'.txt')
         $lines=@($javaArguments | Where-Object { $null -ne $_ } | ForEach-Object { '"'+([string]$_).Replace('\','\\').Replace('"','\"').Replace("`n",'\n').Replace("`r",'\r')+'"' })
         [Text.Encoding]::RegisterProvider([Text.CodePagesEncodingProvider]::Instance)
-        $codePage=[int][Microsoft.Win32.Registry]::GetValue('HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Nls\CodePage','ACP',65001)
-        $encoding=[Text.Encoding]::GetEncoding($codePage,[Text.EncoderFallback]::ExceptionFallback,[Text.DecoderFallback]::ExceptionFallback)
+        $codePage=if ($IsWindows) { [int][Microsoft.Win32.Registry]::GetValue('HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Nls\CodePage','ACP',65001) } else { 65001 }
+        $encoding=if ($codePage -eq 65001) { [Text.UTF8Encoding]::new($false,$true) } else { [Text.Encoding]::GetEncoding($codePage,[Text.EncoderFallback]::ExceptionFallback,[Text.DecoderFallback]::ExceptionFallback) }
         [IO.File]::WriteAllLines($argumentFile,$lines,$encoding)
         $javaArguments=@('@'+$argumentFile)
     }
