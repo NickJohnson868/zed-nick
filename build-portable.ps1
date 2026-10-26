@@ -183,7 +183,7 @@ portable-data 是空目录标记，表示首次启动后将配置和数据保存
 '@ | Set-Content -LiteralPath (Join-Path $outputPath '使用说明.txt') -Encoding utf8
     Write-Host "绿色版已生成：$(Join-Path $outputPath 'Zed.exe')" -ForegroundColor Green
 
-    $archivePath = Join-Path $PSScriptRoot 'Zed-Nick-Portable.zip'
+    $archivePath = Join-Path $PSScriptRoot 'ZedNick-Portable.zip'
     $temporaryArchive = Join-Path $PSScriptRoot ('.local-portable-zip-' + [Guid]::NewGuid().ToString('N') + '.tmp')
     $files = @('Zed.exe', 'bin\zed.exe', 'conpty.dll', 'amd_ags_x64.dll', 'x64\OpenConsole.exe', '使用说明.txt')
     if (Test-Path -LiteralPath (Join-Path $outputPath 'arm64\OpenConsole.exe') -PathType Leaf) {
@@ -194,12 +194,12 @@ portable-data 是空目录标记，表示首次启动后将配置和数据保存
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $archive = [IO.Compression.ZipFile]::Open($temporaryArchive, [IO.Compression.ZipArchiveMode]::Create)
         try {
-            [void]$archive.CreateEntry('Zed-Nick-Portable/')
-            [void]$archive.CreateEntry('Zed-Nick-Portable/portable-data/')
+            [void]$archive.CreateEntry('ZedNick-Portable/')
+            [void]$archive.CreateEntry('ZedNick-Portable/portable-data/')
             foreach ($relative in $files) {
                 $source = Join-Path $outputPath $relative
                 if (!(Test-Path -LiteralPath $source -PathType Leaf)) { throw "绿色版缺少文件：$relative" }
-                $name = 'Zed-Nick-Portable/' + $relative.Replace('\', '/')
+                $name = 'ZedNick-Portable/' + $relative.Replace('\', '/')
                 [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
                     $archive, $source, $name, [IO.Compression.CompressionLevel]::Optimal
                 )
@@ -208,8 +208,8 @@ portable-data 是空目录标记，表示首次启动后将配置和数据保存
         [IO.File]::Move($temporaryArchive, $archivePath, $true)
         $check = [IO.Compression.ZipFile]::OpenRead($archivePath)
         try {
-            $dataEntries = @($check.Entries | Where-Object { $_.FullName.StartsWith('Zed-Nick-Portable/portable-data/', [StringComparison]::Ordinal) })
-            if ($dataEntries.Count -ne 1 -or $dataEntries[0].FullName -ne 'Zed-Nick-Portable/portable-data/' -or $dataEntries[0].Length -ne 0) {
+            $dataEntries = @($check.Entries | Where-Object { $_.FullName.StartsWith('ZedNick-Portable/portable-data/', [StringComparison]::Ordinal) })
+            if ($dataEntries.Count -ne 1 -or $dataEntries[0].FullName -ne 'ZedNick-Portable/portable-data/' -or $dataEntries[0].Length -ne 0) {
                 throw '通用 ZIP 的 portable-data 必须为空目录。'
             }
         } finally { $check.Dispose() }
