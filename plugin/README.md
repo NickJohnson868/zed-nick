@@ -12,6 +12,11 @@ Java needs a JDK, Maven projects need Maven/MVND, and Python projects use their
 configured interpreter or virtual environment. Existing scan whitelists,
 Git ignores, project trust and path checks remain in effect.
 
+The compatibility checks use JDK 21 and Chinese project paths. Older Java
+launchers can still impose their own restrictions on emoji paths or non-ASCII
+application arguments on Windows code pages; the runner does not change the
+machine's system encoding. Use a JDK that supports the required characters.
+
 ## Build and install on the target machine
 
 Install Rust, the native C/C++ toolchain, Git and tar. The Java extension builder
