@@ -1,7 +1,7 @@
 #requires -Version 7.0
 param([Parameter(Mandatory=$true)][string]$JavaHome)
 $ErrorActionPreference = 'Stop'
-$root = Join-Path ([IO.Path]::GetTempPath()) ("zed 模块 ' smoke " + [guid]::NewGuid().ToString('N'))
+$root = Join-Path ([IO.Path]::GetTempPath()) ("zed 模块 🧪 ' smoke " + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path "$root/.zed","$root/src/main/java" -Force | Out-Null
 Set-Content -LiteralPath "$root/pom.xml" -Value '<project />'
 Set-Content -LiteralPath "$root/src/main/java/Main.java" -Value 'public class Main { public static void main(String[] args) { System.out.println("MODULE_OK " + args[0]); } }'

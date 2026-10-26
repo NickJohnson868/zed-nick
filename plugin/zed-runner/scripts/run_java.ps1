@@ -4,6 +4,7 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 $OutputEncoding = [Console]::OutputEncoding
 $argumentFile = $null
+$classpathJar = $null
 $mutex = $null
 $locked = $false
 . "$PSScriptRoot/platform.ps1"
@@ -151,10 +152,31 @@ try {
             $javaArguments=@('@'+$argumentFile)
         } catch [Text.EncoderFallbackException] {
             if (!$IsWindows) { throw }
-            # Windows' ANSI argument files cannot represent every Unicode path.
-            # Keep the original arguments so PowerShell passes them as UTF-16.
             if (Test-Path -LiteralPath $argumentFile) { Remove-Item -LiteralPath $argumentFile -Force }
             $argumentFile=$null
+            # Percent-encoded manifest URLs preserve paths outside the Windows
+            # code page and keep long classpaths off the process command line.
+            $jarDirectory=[IO.Path]::GetTempPath()
+            New-Item -ItemType Directory -Path $jarDirectory -Force | Out-Null
+            $classpathJar=Join-Path $jarDirectory ('classpath-'+[Guid]::NewGuid().ToString('N')+'.jar')
+            $urls=@($classpath -split [regex]::Escape([string][IO.Path]::PathSeparator) | Where-Object { $_ } | ForEach-Object {
+                $path=[IO.Path]::GetFullPath($_)
+                if ([IO.Directory]::Exists($path)) { $path=$path.TrimEnd('\')+'\' }
+                ([Uri]::new($path)).AbsoluteUri
+            })
+            $manifest='Class-Path: '+($urls -join ' ')
+            $manifestLines=[Collections.Generic.List[string]]::new()
+            $manifestLines.Add('Manifest-Version: 1.0')
+            while ($manifest.Length -gt 70) { $manifestLines.Add($manifest.Substring(0,70));$manifest=' '+$manifest.Substring(70) }
+            $manifestLines.Add($manifest)
+            $archive=[IO.Compression.ZipFile]::Open($classpathJar,[IO.Compression.ZipArchiveMode]::Create)
+            try {
+                $stream=$archive.CreateEntry('META-INF/MANIFEST.MF').Open()
+                $writer=[IO.StreamWriter]::new($stream,[Text.UTF8Encoding]::new($false))
+                try { $writer.Write(($manifestLines -join "`r`n")+"`r`n`r`n") } finally { $writer.Dispose() }
+            } finally { $archive.Dispose() }
+            $classpathIndex=[Array]::IndexOf($javaArguments,'-cp')
+            $javaArguments[$classpathIndex+1]=$classpathJar
         }
     }
     $javaArguments+=@($entry.args)
@@ -166,4 +188,5 @@ finally {
     if ($locked) { $mutex.ReleaseMutex() }
     if ($mutex) { $mutex.Dispose() }
     if ($argumentFile -and (Test-Path -LiteralPath $argumentFile)) { Remove-Item -LiteralPath $argumentFile -Force }
+    if ($classpathJar -and (Test-Path -LiteralPath $classpathJar)) { Remove-Item -LiteralPath $classpathJar -Force }
 }
