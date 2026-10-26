@@ -17,3 +17,5 @@ Set-Content "$root/.gitignore" 'app/src/'
 $files = @(Get-WorkspaceFiles $root)
 if ($files.Count) { throw "Git ignores not applied: $files" }
 Write-Host 'Passed: native path separators, whitelist, nested excludes, Git ignore, sibling boundary.'
+
+exit 0

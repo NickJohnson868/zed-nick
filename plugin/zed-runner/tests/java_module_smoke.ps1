@@ -30,3 +30,5 @@ if (@(Get-Content -LiteralPath "$root/target/build-count.txt").Count -ne 1) { th
 Remove-Item Env:ZED_JAVA_ENTRY
 Write-Host 'Passed: Java module launch, Unicode argument file, platform classpath, cached second launch.'
 Write-Host "Temporary fixture: $root"
+
+exit 0

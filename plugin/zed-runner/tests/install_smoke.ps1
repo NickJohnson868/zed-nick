@@ -28,3 +28,5 @@ foreach ($entry in @(@('java','java-lsp-proxy'),@('java','gradle-lsp-bridge'),@(
 }
 if (!(Test-Path -LiteralPath "$extensions/installed/zed-runner/scripts/platform.ps1")) { throw 'Runner platform helper omitted' }
 Write-Host 'Passed: installer artifact guard, all plugin payloads and current-host native filenames.'
+
+exit 0

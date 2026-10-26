@@ -81,11 +81,11 @@ if ($pythonResult.code -ne 0 -or !$pythonResult.output.Contains('PYTHON_TASK_OK'
 }
 & $Python -m venv --without-pip (Join-Path $root '.venv')
 if ($LASTEXITCODE -ne 0) { throw 'Fixture virtual environment creation failed' }
-Add-Content -LiteralPath (Join-Path $root $pythonFile) -Value "import sys; print('VENV_ROOT=' + sys.prefix)"
+Add-Content -LiteralPath (Join-Path $root $pythonFile) -Value "import os, sys; print('VENV_OK=' + str(os.path.samefile(sys.prefix, os.path.join(os.path.dirname(__file__), '.venv'))))"
 $venvEntries = & $provider -Root $root | ConvertFrom-Json
 $venvTask = $venvEntries.entries | Where-Object id -eq "python:$pythonFile"
 $venvResult = Invoke-GeneratedTask $venvTask.task
-if ($venvResult.code -ne 0 -or !$venvResult.output.Contains('VENV_ROOT=' + (Join-Path $root '.venv'))) {
+if ($venvResult.code -ne 0 -or !$venvResult.output.Contains('VENV_OK=True')) {
     throw "Native virtual environment path failed: $($venvResult.output)"
 }
 if ($JavaHome) {
@@ -107,3 +107,5 @@ Write-Host 'Passed: Python global interpreter and native virtual environment lay
 if ($JavaHome) { Write-Host 'Passed: Java source launch and literal application argument through the generated PowerShell task.' }
 if ($Go) { Write-Host 'Passed: Go module launch through the generated task.' }
 Write-Host "Temporary fixture: $root"
+
+exit 0
