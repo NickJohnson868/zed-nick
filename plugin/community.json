@@ -1,0 +1,25 @@
+{
+  "extensions": [
+    {
+      "id": "html",
+      "version": "0.3.2",
+      "repository": "https://github.com/zed-industries/zed",
+      "download": "https://api.zed.dev/extensions/html/0.3.2/download",
+      "sha256": "92a5f672be05f3c1e5cd9c316c1758a5bd464de0284235311057c7662c5e201f"
+    },
+    {
+      "id": "sql",
+      "version": "1.1.8",
+      "repository": "https://github.com/zed-extensions/sql",
+      "download": "https://api.zed.dev/extensions/sql/1.1.8/download",
+      "sha256": "6a27b9f4a9b6db34612d31aded30594d9ee69745ba470cd6e7fb12562faec393"
+    },
+    {
+      "id": "xml",
+      "version": "0.2.0",
+      "repository": "https://github.com/sweetppro/zed-xml",
+      "download": "https://api.zed.dev/extensions/xml/0.2.0/download",
+      "sha256": "ceb8b12a6e9a3834b247340e08a222a85784e7488e69c0f399802a81488ad9f0"
+    }
+  ]
+}

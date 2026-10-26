@@ -193,6 +193,7 @@ pub enum IconName {
     Lock,
     LockOff,
     MagnifyingGlass,
+    Maven,
     Maximize,
     MaximizeAlt,
     Menu,

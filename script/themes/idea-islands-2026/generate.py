@@ -7,9 +7,9 @@ import xml.etree.ElementTree as ET
 
 
 ROOT = Path(__file__).resolve().parent
-REPO = ROOT.parents[1]
+REPO = ROOT.parents[2]
 SOURCE = ROOT / "upstream"
-OUTPUT = ROOT / "themes" / "idea-islands-dark-2026.json"
+OUTPUT = REPO / "assets/themes/idea-islands-2026/idea-islands-dark-2026.json"
 
 
 def main() -> None:

@@ -1189,11 +1189,15 @@ struct GitPanelContextMenu {
     _subscription: Subscription,
 }
 
+#[derive(Clone)]
+struct DraggedCommitEditor(gpui::EntityId);
+
 pub struct GitPanel {
     pub(crate) active_repository: Option<Entity<Repository>>,
     pub(crate) commit_editor: Entity<Editor>,
     /// Whether the commit editor should fill the vertical height of the panel.
     commit_editor_expanded: bool,
+    commit_editor_height: Option<Pixels>,
     /// Whether the commit editor is hidden, leaving only the commit button row.
     commit_editor_collapsed: bool,
     /// Set once the user toggles the editor here, so an untouched workspace keeps
@@ -1540,6 +1544,7 @@ impl GitPanel {
                 active_repository,
                 commit_editor,
                 commit_editor_expanded: false,
+                commit_editor_height: None,
                 commit_editor_collapsed,
                 commit_editor_toggled: commit_editor_was_serialized,
                 conflicted_count: 0,
@@ -6824,7 +6829,7 @@ impl GitPanel {
     ) {
         self.commit_editor_expanded = !self.commit_editor_expanded;
         self.commit_editor.update(cx, |editor, _cx| {
-            if self.commit_editor_expanded {
+            if self.commit_editor_expanded || self.commit_editor_height.is_some() {
                 editor.set_mode(EditorMode::Full {
                     scale_ui_elements_with_buffer_font_size: false,
                     show_active_line_background: false,
@@ -7379,6 +7384,27 @@ impl GitPanel {
                 panel_editor_container(window, cx)
                     .id("commit-editor-container")
                     .w_full()
+                    .on_drag_move::<DraggedCommitEditor>(cx.listener(
+                        |this, event: &gpui::DragMoveEvent<DraggedCommitEditor>, window, cx| {
+                            if event.drag(cx).0 != cx.entity_id()
+                                || this.commit_editor_expanded
+                                || this.commit_editor_collapsed
+                            {
+                                return;
+                            }
+                            let height = (event.bounds.bottom() - event.event.position.y - px(32.))
+                                .clamp(px(64.), (window.viewport_size().height * 0.7).max(px(64.)));
+                            this.commit_editor_height = Some(height);
+                            this.commit_editor.update(cx, |editor, _| {
+                                editor.set_mode(EditorMode::Full {
+                                    scale_ui_elements_with_buffer_font_size: false,
+                                    show_active_line_background: false,
+                                    sizing_behavior: SizingBehavior::ExcludeOverscrollMargin,
+                                });
+                            });
+                            cx.notify();
+                        },
+                    ))
                     .when(self.commit_editor_expanded, |this| this.flex_1().min_h_0())
                     .border_t_1()
                     .border_color(if title_exceeds_limit {
@@ -7387,12 +7413,33 @@ impl GitPanel {
                         cx.theme().colors().border
                     })
                     .when(!collapsed, |this| {
-                        this.on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
+                        this.when(!self.commit_editor_expanded, |this| {
+                            this.child(
+                                div()
+                                    .id("commit-editor-resize-handle")
+                                    .h(px(5.))
+                                    .w_full()
+                                    .cursor_row_resize()
+                                    .hover(|style| style.bg(cx.theme().colors().border_focused))
+                                    .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                        cx.stop_propagation()
+                                    })
+                                    .on_drag(DraggedCommitEditor(cx.entity_id()), |_, _, _, cx| {
+                                        cx.new(|_| Empty)
+                                    }),
+                            )
+                        })
+                        .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
                             window.focus(&this.commit_editor.focus_handle(cx), cx);
                         }))
                         .child(
                             h_flex()
                                 .size_full()
+                                .when(!self.commit_editor_expanded, |this| {
+                                    this.when_some(self.commit_editor_height, |this, height| {
+                                        this.h(height).flex_shrink_0()
+                                    })
+                                })
                                 .child(
                                     div()
                                         .pt_2()

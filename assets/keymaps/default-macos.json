@@ -1,4 +1,14 @@
 [
+  {
+    "context": "MavenPanel && !Editor",
+    "bindings": {
+      "enter": "maven_panel::RunSelected",
+      "down": "maven_panel::SelectNext",
+      "up": "maven_panel::SelectPrevious",
+      "right": "maven_panel::Expand",
+      "left": "maven_panel::Collapse"
+    }
+  },
   // Standard macOS bindings
   {
     "use_key_equivalents": true,

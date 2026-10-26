@@ -1,8 +1,16 @@
 # ZedNick plugins on Windows, macOS and Linux
 
 Personal plugins: `zed-runner`, `zed-java-fork` (extension ID `java`),
-`zed-mybatis-jump`, and `zed-idea-islands-2026`. The ignored `zed-java/` directory
-is a local checkout, not the source shipped by this repository.
+and `zed-mybatis-jump`. IDEA Islands Dark 2026 is a built-in app theme, not a
+plugin. Its generator and pinned sources live in `script/themes/idea-islands-2026`.
+
+`community.json` lists the community HTML, SQL and XML extensions by repository,
+version, official download URL and archive SHA-256. Their source is not vendored.
+`install.ps1` installs both personal and community plugins. Use `-SkipCommunity`
+only for isolated tests or when explicitly installing personal plugins alone.
+Downloaded packages and compiler outputs stay in the ignored `.local-plugin-build`.
+The Windows portable builder includes these plugin runtimes automatically; it
+never copies a user's settings, accounts or language-server caches into the ZIP.
 
 The runner uses **PowerShell 7 (`pwsh`) on every platform**. Install it on the
 target machine. macOS GUI launches also search `/opt/homebrew/bin/pwsh` and
@@ -56,6 +64,38 @@ For an existing `zed-extension` builder, pass `-ExtensionBuilder /path/to/zed-ex
 `-SkipBuild` reuses artifacts only from the specified build directory and checks
 that all current-host outputs exist before installing. No profile or credentials
 are included in a plugin build.
+
+## Maven tool window
+
+ZedNick includes a native Maven panel because the extension API cannot register
+custom dock panels. Its `M` button appears on the **right** when local Maven
+projects are present. The panel follows the module/Lifecycle/Plugins/Profiles/
+Dependencies tree used by IDEA. Single-click selects a goal; double-click or
+the toolbar Run button executes it in Zed's task terminal. Refresh reads POM
+files without executing Maven. Project trust is required to execute a goal.
+
+The runner resolves `java.build_tool` in `.zed/run-environments.json` first,
+then the project's Maven wrapper, then the local Maven/MVND installation. Java
+environment variables are read from the same configuration. Skip tests, offline
+mode, reactor dependencies (`-pl` / `-am`) and explicit profiles are supported;
+panel options are stored per workspace. POM changes refresh the tree.
+
+The tree shows declared POM dependencies and common/declared plugin goals;
+it is not an effective-POM importer. `dependency:tree` resolves the actual
+dependency tree in the terminal. Unknown plugins expose `help:describe`.
+
+```json
+"maven_panel": {
+  "button": true,
+  "dock": "right",
+  "default_width": 320,
+  "starts_open": false
+}
+```
+
+Rebuild the app for this native feature and update `zed-runner` to **0.2.1** or
+later for `scripts/run_maven.ps1`. Updating only the extension does not add the
+native panel to older app binaries.
 
 ## Runtime checks
 

@@ -1011,6 +1011,12 @@
       "on_drop": true,
     },
   },
+  "maven_panel": {
+    "button": true,
+    "starts_open": false,
+    "default_width": 320,
+    "dock": "right",
+  },
   "outline_panel": {
     // Whether to show the outline panel button in the status bar
     "button": true,

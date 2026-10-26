@@ -273,6 +273,8 @@ pub struct SettingsContent {
 
     pub copilot: Option<CopilotSettingsContent>,
 
+    pub maven_panel: Option<MavenPanelSettingsContent>,
+
     pub outline_panel: Option<OutlinePanelSettingsContent>,
 
     pub project_panel: Option<ProjectPanelSettingsContent>,
@@ -409,7 +411,7 @@ fallible_options::flattened_deserialize!(SettingsContent {
         agent_servers, audio, auto_update, base_keymap, collaboration_panel, debugger, diagnostics,
         git,
         global_lsp_settings, image_viewer, markdown_preview, repl, helix_mode, hide_mouse,
-        journal, log, line_indicator_format, language_models, copilot, outline_panel, project_panel,
+        journal, log, line_indicator_format, language_models, copilot, outline_panel, maven_panel, project_panel,
         node, proxy, reduce_motion, server_url, credentials_url, session, telemetry, terminal,
         title_bar, vim_mode, calls, which_key, vim, modeline_lines, feature_flags,
         instrumentation,
@@ -1203,6 +1205,19 @@ pub enum HourFormat {
     #[default]
     Hour12,
     Hour24,
+}
+
+#[with_fallible_options]
+#[derive(Clone, Default, Serialize, Deserialize, JsonSchema, MergeFrom, Debug, PartialEq)]
+pub struct MavenPanelSettingsContent {
+    /// Show the Maven button when the workspace contains Maven projects.
+    pub button: Option<bool>,
+    /// Default width of the Maven tool window in pixels.
+    pub default_width: Option<PixelSetting>,
+    /// Maven tool window position. Defaults to the right.
+    pub dock: Option<DockSide>,
+    /// Open Maven automatically in a new workspace.
+    pub starts_open: Option<bool>,
 }
 
 #[with_fallible_options]

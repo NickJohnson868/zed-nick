@@ -142,6 +142,7 @@ members = [
     "crates/lsp_locations",
     "crates/markdown",
     "crates/markdown_preview",
+    "crates/maven_panel",
     "crates/menu",
     "crates/mermaid_render",
     "crates/migrator",
@@ -433,6 +434,7 @@ open_router = { path = "crates/open_router", features = ["schemars"] }
 openai_subscribed = { path = "crates/openai_subscribed" }
 opencode = { path = "crates/opencode" }
 outline = { path = "crates/outline" }
+maven_panel = { path = "crates/maven_panel" }
 outline_panel = { path = "crates/outline_panel" }
 path = { path = "crates/path" }
 paths = { path = "crates/paths" }

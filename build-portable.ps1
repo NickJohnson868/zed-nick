@@ -8,7 +8,9 @@ param(
     [string]$SourceConfigDirectory = (Join-Path $env:APPDATA 'Zed'),
     [switch]$ImportProfile,
     [switch]$SkipProfileImport,
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$SkipPluginBuild,
+    [string]$PluginBuildDirectory = (Join-Path $PSScriptRoot '.local-plugin-build')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -51,7 +53,9 @@ try {
         throw "通用打包不能复用链接的 portable-data：$profile。请指定新的空输出目录。"
     }
     if (!$ImportProfile -and (Test-Path -LiteralPath $profile -PathType Container) -and
-        (Get-ChildItem -LiteralPath $profile -Force | Select-Object -First 1)) {
+        (Get-ChildItem -LiteralPath $profile -Force | Where-Object {
+            $_.Name -ne 'extensions' -or !(Test-Path -LiteralPath (Join-Path $outputPath 'bundle-manifest.json'))
+        } | Select-Object -First 1)) {
         throw "通用打包不能复用已有数据的 portable-data：$profile。请指定一个新的空输出目录；原有个人数据不会被删除。"
     }
     $importProfile = $ImportProfile -and !(Test-Path -LiteralPath $profile)
@@ -174,10 +178,11 @@ try {
     } else {
         New-Item -ItemType Directory -Path $profile -Force | Out-Null
     }
+    & "$PSScriptRoot/plugin/install.ps1" -ExtensionsDirectory (Join-Path $profile 'extensions') -BuildDirectory $PluginBuildDirectory -SkipBuild:$SkipPluginBuild
     @'
 直接双击本目录的 Zed.exe，不需要 CMD、PowerShell 启动器或安装。
-portable-data 是空目录标记，表示首次启动后将配置和数据保存在程序旁边。
-通用 ZIP 不包含个人设置、登录信息、数据库、日志、插件或语言服务下载缓存。
+portable-data 内预装插件，首次启动后将配置和数据保存在程序旁边。
+通用 ZIP 自带 plugin 目录定义的插件，不包含个人设置、登录信息、数据库、日志或语言服务下载缓存。
 首次启动会自动创建所需内容；更新程序时保留自己机器上的 portable-data。
 项目里的 .zed/run-environments.json 配置各语言运行环境；下拉框选择入口。
 '@ | Set-Content -LiteralPath (Join-Path $outputPath '使用说明.txt') -Encoding utf8
@@ -185,10 +190,29 @@ portable-data 是空目录标记，表示首次启动后将配置和数据保存
 
     $archivePath = Join-Path $PSScriptRoot 'ZedNick-Portable.zip'
     $temporaryArchive = Join-Path $PSScriptRoot ('.local-portable-zip-' + [Guid]::NewGuid().ToString('N') + '.tmp')
-    $files = @('Zed.exe', 'bin\zed.exe', 'conpty.dll', 'amd_ags_x64.dll', 'x64\OpenConsole.exe', '使用说明.txt')
+    Copy-Item -LiteralPath "$PSScriptRoot/script/update-portable.ps1" -Destination (Join-Path $outputPath 'Update-Zed.ps1') -Force
+    $files = @('Zed.exe', 'bin\zed.exe', 'conpty.dll', 'amd_ags_x64.dll', 'x64\OpenConsole.exe', '使用说明.txt', 'Update-Zed.ps1')
     if (Test-Path -LiteralPath (Join-Path $outputPath 'arm64\OpenConsole.exe') -PathType Leaf) {
         $files += 'arm64\OpenConsole.exe'
     }
+    foreach ($directory in @('installed/java','installed/mybatis-jump','installed/zed-runner','installed/html','installed/sql','installed/xml','work/java/bin','work/mybatis-jump/bin')) {
+        $directoryPath = Join-Path $profile "extensions/$directory"
+        foreach ($file in Get-ChildItem -LiteralPath $directoryPath -File -Recurse) {
+            $files += [IO.Path]::GetRelativePath($outputPath, $file.FullName)
+        }
+    }
+    $plugins = foreach ($id in @('java','mybatis-jump','zed-runner','html','sql','xml')) {
+        $metadata = Get-Content -LiteralPath (Join-Path $profile "extensions/installed/$id/extension.toml") -Raw
+        if ($metadata -notmatch '(?m)^version\s*=\s*"([^"]+)"') { throw "插件缺少版本：$id" }
+        @{ id=$id; version=$Matches[1] }
+    }
+    $bundleFiles = foreach ($relative in $files) {
+        $source = Join-Path $outputPath $relative
+        @{ path=$relative.Replace('\','/'); target=$relative.Replace('\','/'); sha256=(Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant(); size=(Get-Item -LiteralPath $source).Length }
+    }
+    @{ commit=(& git rev-parse HEAD).Trim(); built_at=[DateTimeOffset]::Now.ToString('o'); platform='windows-x64'; local_uncommitted_ui_changes=([bool](& git status --porcelain)); plugins=@($plugins); files=@($bundleFiles) } |
+        ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $outputPath 'bundle-manifest.json') -Encoding utf8
+    $files += 'bundle-manifest.json'
     try {
         Add-Type -AssemblyName System.IO.Compression
         Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -209,8 +233,8 @@ portable-data 是空目录标记，表示首次启动后将配置和数据保存
         $check = [IO.Compression.ZipFile]::OpenRead($archivePath)
         try {
             $dataEntries = @($check.Entries | Where-Object { $_.FullName.StartsWith('ZedNick-Portable/portable-data/', [StringComparison]::Ordinal) })
-            if ($dataEntries.Count -ne 1 -or $dataEntries[0].FullName -ne 'ZedNick-Portable/portable-data/' -or $dataEntries[0].Length -ne 0) {
-                throw '通用 ZIP 的 portable-data 必须为空目录。'
+            if (@($dataEntries | Where-Object { $_.FullName -ne 'ZedNick-Portable/portable-data/' -and !$_.FullName.StartsWith('ZedNick-Portable/portable-data/extensions/', [StringComparison]::Ordinal) }).Count) {
+                throw '通用 ZIP 不得包含插件以外的个人数据。'
             }
         } finally { $check.Dispose() }
     } finally {

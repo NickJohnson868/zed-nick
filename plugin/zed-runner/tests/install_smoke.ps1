@@ -13,20 +13,22 @@ if ($LASTEXITCODE -ne 0) { throw 'Fixture archive failed' }
 Set-Content -LiteralPath "$build/target/wasm32-wasip2/release/zed_mybatis_jump.wasm" -Value 'fixture-wasm'
 $installer = Join-Path $PSScriptRoot '../../install.ps1'
 $rejected = $false
-try { & $installer -ExtensionsDirectory $extensions -BuildDirectory $build -SkipBuild } catch { $rejected = $true }
+try { & $installer -ExtensionsDirectory $extensions -BuildDirectory $build -SkipBuild -SkipCommunity } catch { $rejected = $true }
 if (!$rejected -or (Test-Path -LiteralPath $extensions)) { throw 'Missing native artifacts must fail before installation' }
 foreach ($name in @('java-lsp-proxy','gradle-lsp-bridge','mybatis-jump-lsp')) {
     Set-Content -LiteralPath "$build/target/$hostTriple/release/$name$suffix" -Value "fixture-$hostTriple-$name"
 }
-& $installer -ExtensionsDirectory $extensions -BuildDirectory $build -SkipBuild
-foreach ($id in @('java','mybatis-jump','zed-runner','idea-islands-2026')) {
+& $installer -ExtensionsDirectory $extensions -BuildDirectory $build -SkipBuild -SkipCommunity
+foreach ($id in @('java','mybatis-jump','zed-runner')) {
     if (!(Test-Path -LiteralPath "$extensions/installed/$id/extension.toml")) { throw "Missing installed extension: $id" }
 }
+if (Test-Path -LiteralPath "$extensions/installed/idea-islands-2026") { throw 'Built-in theme must not be installed as an extension' }
 foreach ($entry in @(@('java','java-lsp-proxy'),@('java','gradle-lsp-bridge'),@('mybatis-jump','mybatis-jump-lsp'))) {
     $path = "$extensions/work/$($entry[0])/bin/$($entry[1])$suffix"
     if ((Get-Content -LiteralPath $path -Raw).Trim() -ne "fixture-$hostTriple-$($entry[1])") { throw "Wrong native binary: $path" }
 }
 if (!(Test-Path -LiteralPath "$extensions/installed/zed-runner/scripts/platform.ps1")) { throw 'Runner platform helper omitted' }
+if (!(Test-Path -LiteralPath "$extensions/installed/mybatis-jump/bin/mybatis-jump-lsp$suffix")) { throw 'MyBatis linked runtime omitted' }
 Write-Host 'Passed: installer artifact guard, all plugin payloads and current-host native filenames.'
 
 exit 0

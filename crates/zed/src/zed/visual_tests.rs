@@ -59,6 +59,7 @@ pub fn init_visual_test(cx: &mut VisualTestAppContext) -> Arc<AppState> {
         editor::init(cx);
         project_panel::init(cx);
         outline_panel::init(cx);
+        maven_panel::init(cx);
         terminal_view::init(cx);
         image_viewer::init(cx);
         search::init(cx);

@@ -8,13 +8,15 @@
 
 默认 8 个并行任务，使用现有 Cargo 缓存，不执行 clean。BAT 调用同目录的 PowerShell 脚本并透传参数；需要 PowerShell 7、Rust、Visual Studio C++/Windows SDK 和 Spectre 库。先编译 GUI，再单独编译 CLI，成功后才组装目录。脚本优先使用本机 `Documents\tools\rust` 环境及 VS 2026 附带的 CMake，不修改系统环境变量。
 
-交付物为项目根目录的 `ZedNick-Portable.zip`。解压后直接双击其中的 `Zed.exe`。BAT 仅用于编译打包，运行 Zed 不需要 CMD 或 PowerShell 启动器。脚本默认在 `.local-portable-build` 目录组装，不再使用 `release` 作为交付目录。ZIP 中的 `portable-data/` 只是空目录标记：Zed 靠它判断要把数据写在程序旁边，首次启动时才生成设置、数据库和缓存。ZIP 不包含本机的设置、登录信息、插件、语言服务、日志或项目数据。
+交付物为项目根目录的 `ZedNick-Portable.zip`。解压后直接双击其中的 `Zed.exe`。默认在 `.local-portable-build` 组装，`portable-data/extensions` 预装插件，首次启动后再创建个人配置和数据。ZIP 不包含本机设置、登录信息、语言服务下载缓存、日志或项目数据。
 
-默认通用打包不会安装个人插件，也不会复用已有数据的组装目录。如果 `.local-portable-build/portable-data` 已有内容，脚本会报错并要求改用新的空 `-OutputDirectory`，不会删除旧数据。ZIP 写完后还会验证其中的 `portable-data/` 确实为空。
+打包统一调用 `plugin/install.ps1`：编译 Java fork、MyBatis、Runner，从 `plugin/community.json` 中的官方链接下载并校验 HTML、SQL、XML。社区源码不存入仓库。IDEA Islands 是内置主题。已有应用和插件构建产物时，可用 `-SkipBuild -SkipPluginBuild` 只组装；插件构建缓存默认位于 `.local-plugin-build`。组装目录一旦含个人配置等数据，需要另选空目录；ZIP 仅允许携带插件数据。
+
+更新本机时，在解压目录执行 `pwsh -NoProfile -File ./Update-Zed.ps1 -InstallDirectory 'C:\path\to\Zed-Nick'`。脚本校验文件并备份旧文件，保留个人设置；若 Zed 正在运行，会等待正常退出后覆盖，不自动重启。
 
 首次迁移会排除崩溃处理通信文件等临时 socket，保留开发扩展的目录链接，并使用原子目录重命名完成迁移。AMD AGS 6.3.0 依赖优先从已有 Zed 获取，缺少时从上游固定版本 SDK 下载；OpenConsole 从构建输出查找。
 
-只有明确传入 `-ImportProfile` 时，脚本才把当前账户 `%APPDATA%\Zed` 的配置和 `%LOCALAPPDATA%\Zed` 的数据复制到指定组装目录。此时先关闭所有 Zed 窗口；原目录保留，迁移失败时不把半成品当作完整配置。仓库根目录的 ZIP 始终保持空白配置。更新已解压的绿色版时，保留它自己的 `portable-data`。
+只有明确传入 `-ImportProfile` 时，脚本才把当前账户配置和数据复制到指定组装目录。通用 ZIP 仍只打包插件，不带个人配置。导入前应关闭所有 Zed；原目录保留。
 
 ```powershell
 # 默认生成空白配置 ZIP，适合复制到另一台电脑

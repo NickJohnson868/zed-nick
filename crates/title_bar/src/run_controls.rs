@@ -176,7 +176,33 @@ impl TitleBar {
             .as_ref()
             .filter(|entry| entry.debug.is_some())
             .cloned();
-        let entries = self.run_controls.entries.clone();
+        let root = self.run_controls.root.as_deref();
+        let mut entries: Vec<_> = self
+            .run_controls
+            .entries
+            .iter()
+            .cloned()
+            .map(|entry| {
+                let relative = root
+                    .and_then(|root| entry.file.strip_prefix(root).ok())
+                    .unwrap_or(&entry.file);
+                let project = if relative
+                    .parent()
+                    .is_some_and(|parent| !parent.as_os_str().is_empty())
+                {
+                    relative
+                        .components()
+                        .next()
+                        .map(|component| component.as_os_str().to_string_lossy().into_owned())
+                } else {
+                    root.and_then(|root| root.file_name())
+                        .map(|name| name.to_string_lossy().into_owned())
+                }
+                .unwrap_or_else(|| "项目".into());
+                (project, entry)
+            })
+            .collect();
+        entries.sort_by_cached_key(|(project, _)| project.to_lowercase());
         let error = self.run_controls.error.clone();
         let selected_id = selected.as_ref().map(|entry| entry.id.clone());
         let selector = PopoverMenu::new("run-entry-picker")
@@ -186,12 +212,26 @@ impl TitleBar {
                     .child(Icon::new(IconName::ChevronDown).size(IconSize::XSmall)),
             )
             .menu(move |window, cx| {
-                Some(ContextMenu::build(window, cx, |mut menu, _, _| {
+                Some(ContextMenu::build(window, cx, |mut menu, window, cx| {
                     menu = menu
                         .end_slot_action(Box::new(menu::SecondaryConfirm))
                         .header("项目启动入口");
-                    for entry in &entries {
+                    let mut previous_project = None;
+                    for (project, entry) in &entries {
+                        if previous_project != Some(project) {
+                            let project_name = project.clone();
+                            let first_project = previous_project.is_none();
+                            menu = menu.custom_entry(move |_, _| {
+                                v_flex()
+                                    .pt(if first_project { px(4.) } else { px(16.) })
+                                    .pb_2()
+                                    .child(Label::new(project_name.clone()).weight(gpui::FontWeight::BOLD))
+                                    .into_any_element()
+                            }, |_, _| {}).selectable(false);
+                            previous_project = Some(project);
+                        }
                         let id = entry.id.clone();
+                        let is_selected = selected_id.as_ref() == Some(&id);
                         let this = this.clone();
                         let label = format!(
                             "{}{}",
@@ -233,6 +273,9 @@ impl TitleBar {
                                         .log_err();
                                 },
                             );
+                        }
+                        if is_selected {
+                            menu.select_last(window, cx);
                         }
                     }
                     if let Some(error) = &error {

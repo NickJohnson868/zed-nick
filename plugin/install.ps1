@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory=$true)][string]$ExtensionsDirectory,
     [string]$ExtensionBuilder,
     [string]$BuildDirectory = (Join-Path $PSScriptRoot '../.local-plugin-build'),
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$SkipCommunity
 )
 $ErrorActionPreference = 'Stop'
 $repository = Split-Path $PSScriptRoot -Parent
@@ -48,7 +49,7 @@ try {
     foreach ($relative in @('java/archive.tar.gz',"target/wasm32-wasip2/release/zed_mybatis_jump.wasm","target/$hostTriple/release/java-lsp-proxy$executableSuffix","target/$hostTriple/release/gradle-lsp-bridge$executableSuffix","target/$hostTriple/release/mybatis-jump-lsp$executableSuffix")) {
         if (!(Test-Path -LiteralPath (Join-Path $buildDirectory $relative) -PathType Leaf)) { throw "缺少当前平台产物：$relative" }
     }
-    foreach ($id in @('java','mybatis-jump','zed-runner','idea-islands-2026')) {
+    foreach ($id in @('java','mybatis-jump','zed-runner')) {
         foreach ($relative in @("installed/$id","work/$id","work/$id/bin")) {
             $destination = Join-Path $ExtensionsDirectory $relative
             if ((Test-Path -LiteralPath $destination) -and (Get-Item -LiteralPath $destination -Force).Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) { throw "保留现有开发链接，请更新对应源目录：$destination" }
@@ -58,7 +59,6 @@ try {
     New-Item -ItemType Directory -Path (Join-Path $stage 'java') -Force | Out-Null
     & tar -xzf "$buildDirectory/java/archive.tar.gz" -C (Join-Path $stage 'java')
     if ($LASTEXITCODE -ne 0) { throw 'Java 扩展包解压失败' }
-    Copy-Runtime "$PSScriptRoot/zed-idea-islands-2026" (Join-Path $stage 'idea-islands-2026')
     $runner = Join-Path $stage 'zed-runner'
     New-Item -ItemType Directory -Path $runner -Force | Out-Null
     foreach ($name in @('extension.toml','run-provider.ps1','config-template.ps1','run-environments.template.json','scripts')) {
@@ -68,7 +68,9 @@ try {
     New-Item -ItemType Directory -Path $mybatis -Force | Out-Null
     Copy-Item -LiteralPath "$PSScriptRoot/zed-mybatis-jump/extension.toml" -Destination $mybatis
     Copy-Item -LiteralPath "$env:CARGO_TARGET_DIR/wasm32-wasip2/release/zed_mybatis_jump.wasm" -Destination (Join-Path $mybatis 'extension.wasm')
-    foreach ($id in @('java','mybatis-jump','zed-runner','idea-islands-2026')) {
+    New-Item -ItemType Directory -Path (Join-Path $mybatis 'bin') -Force | Out-Null
+    Copy-Item -LiteralPath "$env:CARGO_TARGET_DIR/$hostTriple/release/mybatis-jump-lsp$executableSuffix" -Destination (Join-Path $mybatis 'bin') -Force
+    foreach ($id in @('java','mybatis-jump','zed-runner')) {
         $destination = Join-Path $ExtensionsDirectory "installed/$id"
         if ((Test-Path -LiteralPath $destination) -and (Get-Item -LiteralPath $destination -Force).Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) {
             throw "现有插件是开发链接，请保留链接并更新源目录：$destination"
@@ -84,6 +86,9 @@ try {
             & chmod +x (Join-Path $destination "$($entry[1])$executableSuffix")
             if ($LASTEXITCODE -ne 0) { throw '无法设置原生插件执行权限' }
         }
+    }
+    if (!$SkipCommunity) {
+        & "$PSScriptRoot/install-community.ps1" -ExtensionsDirectory $ExtensionsDirectory -CacheDirectory (Join-Path $buildDirectory 'community')
     }
     Write-Host "已安装当前平台插件（$hostTriple）：$ExtensionsDirectory。下次启动 ZedNick 加载；未重启。"
 } finally {
