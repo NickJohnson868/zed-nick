@@ -48,6 +48,7 @@ gpui = { workspace = true, features = ["screen-capture"] }
 icons.workspace = true
 livekit_client.workspace = true
 menu.workspace = true
+path.workspace = true
 project.workspace = true
 recent_projects.workspace = true
 remote.workspace = true
