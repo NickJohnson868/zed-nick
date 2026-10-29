@@ -1,6 +1,6 @@
 id = "zed-runner"
 name = "Personal Run and Debug"
-version = "0.2.1"
+version = "0.2.2"
 schema_version = 1
 authors = ["62453"]
 description = "Personal project entry discovery for the Zed-Nick toolbar"

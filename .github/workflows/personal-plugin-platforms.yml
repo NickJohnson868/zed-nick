@@ -45,6 +45,9 @@ jobs:
         run: ./plugin/zed-runner/tests/scan_smoke.ps1
       - name: Check Maven panel tasks
         run: ./plugin/zed-runner/tests/maven_smoke.ps1
+      - name: Check system Windows PowerShell 5.1
+        if: runner.os == 'Windows'
+        run: ./plugin/zed-runner/tests/powershell51_smoke.ps1 -JavaHome $env:JAVA_HOME
       - name: Check platform installation layout
         run: ./plugin/zed-runner/tests/install_smoke.ps1
       - name: Install pinned community extensions

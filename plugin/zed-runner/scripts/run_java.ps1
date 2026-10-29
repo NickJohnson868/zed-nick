@@ -1,4 +1,4 @@
-param([switch]$BuildOnly)
+﻿param([switch]$BuildOnly)
 $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
@@ -35,9 +35,12 @@ function Get-InputStamp([string]$Root, [string[]]$Modules, [string]$Identity) {
         foreach ($path in $files) {
             $hash.AppendData([Text.Encoding]::UTF8.GetBytes($path+"`0"))
             $stream = [IO.File]::OpenRead($path)
-            try { $hash.AppendData([Security.Cryptography.SHA256]::HashData($stream)) } finally { $stream.Dispose() }
+            try {
+                $fileHash = [Security.Cryptography.SHA256]::Create()
+                try { $hash.AppendData($fileHash.ComputeHash($stream)) } finally { $fileHash.Dispose() }
+            } finally { $stream.Dispose() }
         }
-        return [Convert]::ToHexString($hash.GetHashAndReset())
+        return ConvertTo-RunnerHex ($hash.GetHashAndReset())
     } finally { $hash.Dispose() }
 }
 function Get-StampOrUncertain([string]$Root,[string[]]$Modules,[string]$Identity) {
@@ -58,7 +61,7 @@ function Get-OutputStamp([string[]]$Paths) {
         } else { return '' }
     }
     $records.Sort([StringComparer]::Ordinal)
-    return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes(($records -join "`n"))))
+    return Get-RunnerSha256 ([Text.Encoding]::UTF8.GetBytes(($records -join "`n")))
 }
 try {
     $entry = $env:ZED_JAVA_ENTRY | ConvertFrom-Json
@@ -67,14 +70,14 @@ try {
     Set-Location -LiteralPath $root
     $legacyPath = Join-Path $root '.zed/run-config.json'
     if (Test-Path -LiteralPath $legacyPath -PathType Leaf) {
-        try { $legacy = Get-Content -LiteralPath $legacyPath -Raw | ConvertFrom-Json }
+        try { $legacy = Get-Content -LiteralPath $legacyPath -Raw -Encoding UTF8 | ConvertFrom-Json }
         catch { throw '无法读取项目私密运行配置，请检查 .zed/run-config.json。' }
         if ($legacy.env) { foreach ($variable in $legacy.env.PSObject.Properties) {
             if (@($entry.envKeys) -notcontains $variable.Name) { [Environment]::SetEnvironmentVariable($variable.Name,[string]$variable.Value,'Process') }
         } }
     }
     $java = [string]$entry.java
-    if (![IO.Path]::IsPathFullyQualified($java) -or !(Test-Path -LiteralPath $java -PathType Container)) {
+    if (!(Test-RunnerAbsolutePath $java) -or !(Test-Path -LiteralPath $java -PathType Container)) {
         throw '请在 java.runtime 中配置 JDK 的绝对目录。'
     }
     $env:JAVA_HOME=$java
@@ -88,7 +91,7 @@ try {
         $moduleDirectory=Split-Path $modulePom -Parent
         if (!(Test-RunnerPathWithin $moduleDirectory $root)) { throw '启动模块必须位于当前项目内。' }
         $maven=[string]$entry.maven
-        if (![IO.Path]::IsPathFullyQualified($maven) -or !(Test-Path -LiteralPath $maven -PathType Leaf)) {
+        if (!(Test-RunnerAbsolutePath $maven) -or !(Test-Path -LiteralPath $maven -PathType Leaf)) {
             throw '请在 java.build_tool 中配置 Maven/MVND 可执行文件的绝对路径。'
         }
         $target=Join-Path $moduleDirectory 'target'
@@ -97,13 +100,13 @@ try {
         $classes=Join-Path $target 'classes'
         $mainClassFile=Join-Path $classes (([string]$entry.class).Replace('.','/')+'.class')
         $identity="$java|$((Get-Item -LiteralPath $java).LastWriteTimeUtc.Ticks)|$maven|$env:MAVEN_OPTS|$env:JAVA_TOOL_OPTIONS|$env:JDK_JAVA_OPTIONS"
-        $lockKey=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($(if ($IsWindows) { $root.ToLowerInvariant() } else { $root }))))
+        $lockKey=Get-RunnerSha256 ([Text.Encoding]::UTF8.GetBytes($(if ($IsWindows) { $root.ToLowerInvariant() } else { $root })))
         $mutexName = if ($IsWindows) { "Local\zed-java-build-$lockKey" } else { "zed-java-build-$lockKey" }
         $mutex=[Threading.Mutex]::new($false,$mutexName)
         try { $locked=$mutex.WaitOne([TimeSpan]::FromSeconds(5)) } catch [Threading.AbandonedMutexException] { $locked=$true }
         if (!$locked) { throw '当前项目正在构建，请等待后再运行。' }
         $state=$null
-        if (Test-Path -LiteralPath $stateFile) { try { $state=Get-Content -LiteralPath $stateFile -Raw | ConvertFrom-Json } catch { Write-Warning '运行缓存损坏，将重新增量构建。' } }
+        if (Test-Path -LiteralPath $stateFile) { try { $state=Get-Content -LiteralPath $stateFile -Raw -Encoding UTF8 | ConvertFrom-Json } catch { Write-Warning '运行缓存损坏，将重新增量构建。' } }
         $fresh=$false
         if ($state -and $state.version -eq 1 -and (Test-Path -LiteralPath $classpathFile) -and (Test-Path -LiteralPath $mainClassFile)) {
             $stamp=Get-StampOrUncertain $root @($state.modules) $identity
@@ -111,11 +114,10 @@ try {
         }
         if (!$fresh) {
             $before=Get-StampOrUncertain $root @() $identity
-            $relativeModule=[IO.Path]::GetRelativePath($root,$moduleDirectory)
+            $relativeModule=(Get-RunnerRelativePath $root $moduleDirectory)
             $buildArguments=@('-f',$modulePom)
             if ((Test-Path -LiteralPath (Join-Path $root 'pom.xml')) -and $relativeModule -ne '.') { $buildArguments=@('-f',(Join-Path $root 'pom.xml'),'-pl',$relativeModule,'-am') }
             if ([IO.Path]::GetFileNameWithoutExtension($maven) -eq 'mvnd') { $buildArguments+="-Dmvnd.java.home=$env:JAVA_HOME" }
-            Write-Host '运行前增量构建：compile + 解析运行依赖（不执行 package / clean）' -ForegroundColor Cyan
             & $maven @buildArguments '-B' '-T' '8' '-DskipTests' 'compile' 'dependency:build-classpath' '-DincludeScope=runtime' '-Dmdep.outputFile=target/zed-run-classpath.txt' '-Dmdep.regenerateFile=true'
             if ($LASTEXITCODE -ne 0) { throw "增量构建失败（退出码 $LASTEXITCODE），未启动应用。" }
             if (!(Test-Path -LiteralPath $classpathFile) -or !(Test-Path -LiteralPath $mainClassFile)) { throw '未生成启动类或 classpath，请检查 Main 类和模块。' }
@@ -129,7 +131,7 @@ try {
                 $outputs=Get-OutputStamp $paths
                 if ($inputs -and $outputs) { @{version=1;inputs=$inputs;outputs=$outputs;modules=$modules;paths=$paths;classpathHash=(Get-FileHash -LiteralPath $classpathFile).Hash} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $stateFile -Encoding utf8 }
             }
-        } else { Write-Host '源码、依赖及编译产物未变化，直接启动。' -ForegroundColor Green }
+        }
         $classpath=$classes+[IO.Path]::PathSeparator+[IO.File]::ReadAllText($classpathFile).Trim()
         $javaArguments+=@('-cp',$classpath,[string]$entry.class)
         $mutex.ReleaseMutex();$locked=$false
@@ -144,7 +146,7 @@ try {
         # code page, independently of file.encoding and the console code page.
         $argumentFile=Join-Path $target ('zed-java-arguments-'+[Guid]::NewGuid().ToString('N')+'.txt')
         $lines=@($javaArguments | Where-Object { $null -ne $_ } | ForEach-Object { '"'+([string]$_).Replace('\','\\').Replace('"','\"').Replace("`n",'\n').Replace("`r",'\r')+'"' })
-        [Text.Encoding]::RegisterProvider([Text.CodePagesEncodingProvider]::Instance)
+        if ($PSVersionTable.PSVersion.Major -ge 6) { [Text.Encoding]::RegisterProvider([Text.CodePagesEncodingProvider]::Instance) }
         $codePage=if ($IsWindows) { [int][Microsoft.Win32.Registry]::GetValue('HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Nls\CodePage','ACP',65001) } else { 65001 }
         $encoding=if ($codePage -eq 65001) { [Text.UTF8Encoding]::new($false,$true) } else { [Text.Encoding]::GetEncoding($codePage,[Text.EncoderFallback]::ExceptionFallback,[Text.DecoderFallback]::ExceptionFallback) }
         try {
@@ -169,6 +171,7 @@ try {
             $manifestLines.Add('Manifest-Version: 1.0')
             while ($manifest.Length -gt 70) { $manifestLines.Add($manifest.Substring(0,70));$manifest=' '+$manifest.Substring(70) }
             $manifestLines.Add($manifest)
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
             $archive=[IO.Compression.ZipFile]::Open($classpathJar,[IO.Compression.ZipArchiveMode]::Create)
             try {
                 $stream=$archive.CreateEntry('META-INF/MANIFEST.MF').Open()
@@ -180,7 +183,6 @@ try {
         }
     }
     $javaArguments+=@($entry.args)
-    Write-Host "启动 Main：$($entry.class)" -ForegroundColor Cyan
     & $java @javaArguments
     exit $LASTEXITCODE
 } catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }

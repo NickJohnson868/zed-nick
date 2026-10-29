@@ -18,7 +18,7 @@ Python 的 `pyproject.toml` 入口要求配置 `python.uv`，`requirements.txt` 
 
 Git 项目通过 `git ls-files --cached --others --exclude-standard` 获取候选文件，自动遵守 `.gitignore` 和 Git 的其他忽略规则；即使结果为空也不会退回无过滤的目录遍历。非 Git 目录才使用内置目录扫描。Java 增量构建的输入指纹采用相同的候选文件范围。
 
-自动生成的运行任务使用 PowerShell 7，并将可执行文件路径及每个参数作为独立字符串转义，支持 `C:\Program Files\nodejs\npm.cmd` 等带空格的工具路径。自定义 `entries` 中的任务保留用户指定的命令和 shell。
+自动生成的运行任务在 Windows 自动查找系统 PowerShell，兼容 5.1 和 7，无需另装 PS7；macOS、Linux 使用 pwsh。可执行文件路径及每个参数都独立转义，支持 `C:\Program Files\nodejs\npm.cmd` 等带空格的路径。自定义 `entries` 中的任务保留用户指定的命令和 shell。
 
 项目可在 `.zed/runner-ignore.json` 中指定白名单与忽略名单，例如 `{"scan_directories":["ai-manager-app","script"],"ignore_directories":["tools"]}`。创建此文件后只扫描白名单目录；忽略名单只在白名单内生效。`scan_directories` 使用项目根目录相对路径，填 `"."` 表示整个项目。`ignore_directories` 中单个目录名（如 `tools`）匹配白名单内任意层级；相对路径（如 `script/generated`）只匹配项目根目录下的对应目录。Git 忽略规则始终生效。不创建此文件时沿用原有扫描范围。修改后在入口菜单选择“重新扫描入口 / 重载运行环境”。
 

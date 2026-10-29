@@ -1,14 +1,14 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 . "$PSScriptRoot/scripts/platform.ps1"
 function Existing-File([string[]]$Candidates) {
     foreach ($candidate in $Candidates) {
-        if ($candidate -and [IO.Path]::IsPathFullyQualified($candidate) -and
+        if ($candidate -and (Test-RunnerAbsolutePath $candidate) -and
             (Test-Path -LiteralPath $candidate -PathType Leaf)) { return [IO.Path]::GetFullPath($candidate) }
     }
     return ''
 }
 function In-Directory([string]$Directory, [string[]]$Names) {
-    if (!$Directory -or ![IO.Path]::IsPathFullyQualified($Directory)) { return '' }
+    if (!$Directory -or !(Test-RunnerAbsolutePath $Directory)) { return '' }
     foreach ($name in $Names) {
         $candidate = Join-Path $Directory $name
         if (Test-Path -LiteralPath $candidate -PathType Leaf) { return [IO.Path]::GetFullPath($candidate) }
@@ -46,7 +46,7 @@ if (!$jdk -and $IsMacOS -and (Test-Path -LiteralPath '/usr/libexec/java_home')) 
 if (!$jdk) {
     $java = On-Path 'java'
     if ($java) {
-        $resolved = (Get-Item -LiteralPath $java).ResolveLinkTarget($true)
+        $resolved = if (!$IsWindows) { (Get-Item -LiteralPath $java).ResolveLinkTarget($true) } else { $null }
         if ($resolved) { $java = $resolved.FullName }
         $candidate = Split-Path (Split-Path $java -Parent) -Parent
         if (Test-Path -LiteralPath (Join-Path $candidate $runnerJavaRelativePath)) { $jdk = $candidate }
@@ -69,4 +69,4 @@ if (!$npm) { $npm = On-Path 'npm' }
         javascript = @{ runtime=$npm; env=@{} }
     }
     entries = @()
-} | ConvertTo-Json -Depth 10 -EscapeHandling EscapeNonAscii
+} | ConvertTo-RunnerJson -Depth 10

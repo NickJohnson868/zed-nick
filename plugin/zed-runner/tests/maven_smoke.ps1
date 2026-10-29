@@ -1,4 +1,5 @@
 #requires -Version 7.0
+param([string]$RunnerShell = (Get-Process -Id $PID).Path)
 $ErrorActionPreference = 'Stop'
 $root = Join-Path ([IO.Path]::GetTempPath()) ("zed maven 中文 ' " + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path "$root/.zed","$root/service" -Force | Out-Null
@@ -7,13 +8,13 @@ Set-Content -LiteralPath "$root/service/pom.xml" '<project />'
 $capture = Join-Path $root 'arguments.json'
 $tool = Join-Path $root "fake maven ' executable.ps1"
 Set-Content -LiteralPath $tool -Value @'
-@{ arguments=@($args);cwd=(Get-Location).Path;marker=$env:MAVEN_MARKER } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $env:MAVEN_CAPTURE
+@{ arguments=@($args);cwd=(Get-Location).Path;marker=$env:MAVEN_MARKER } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $env:MAVEN_CAPTURE -Encoding UTF8
 exit ([int]$env:MAVEN_EXIT)
 '@
 $settings = @{environments=@{java=@{build_tool=$tool;env=@{MAVEN_CAPTURE=$capture;MAVEN_EXIT='0';MAVEN_MARKER='configured'}}}}
 $settings | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath "$root/.zed/run-environments.json"
 $runner = Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts/run_maven.ps1'
-$shell = (Get-Process -Id $PID).Path
+$shell = $RunnerShell
 & $shell -NoProfile -File $runner -Root $root -Pom "$root/service/pom.xml" -ReactorPom "$root/pom.xml" -Goals 'clean,verify' -Profiles 'prod,!dev' -SkipTests -Offline -AlsoMake
 if ($LASTEXITCODE -ne 0) { throw 'Maven task failed' }
 $record = Get-Content -LiteralPath $capture -Raw | ConvertFrom-Json

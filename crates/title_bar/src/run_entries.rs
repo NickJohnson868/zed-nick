@@ -60,6 +60,24 @@ fn providers() -> Result<Vec<PathBuf>> {
 }
 
 fn provider_shell() -> PathBuf {
+    if cfg!(windows) {
+        if let Some(path) = std::env::var_os("PATH") {
+            let directories: Vec<_> = std::env::split_paths(&path).collect();
+            for name in ["powershell.exe", "pwsh.exe"] {
+                if let Some(candidate) = directories
+                    .iter()
+                    .map(|directory| directory.join(name))
+                    .find(|candidate| candidate.is_file())
+                {
+                    return candidate;
+                }
+            }
+        }
+        return std::env::var_os("SystemRoot")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(r"C:\Windows"))
+            .join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
+    }
     if let Some(path) = std::env::var_os("PATH") {
         for directory in std::env::split_paths(&path) {
             let candidate = directory.join(if cfg!(windows) { "pwsh.exe" } else { "pwsh" });
@@ -85,7 +103,14 @@ pub fn config_template() -> Result<String> {
         let generator = provider.join(TEMPLATE_SCRIPT);
         if generator.is_file() {
             let output = std::process::Command::new(provider_shell())
-                .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-File"])
+                .args([
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                ])
                 .arg(&generator)
                 .output()
                 .with_context(|| format!("无法运行配置模板：{}", generator.display()))?;
@@ -122,7 +147,14 @@ pub async fn discover(root: &Path) -> Result<Discovery> {
     for provider in providers {
         let script = provider.join(PROVIDER_SCRIPT);
         let output = util::command::new_command(provider_shell())
-            .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-File"])
+            .args([
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+            ])
             .arg(&script)
             .arg("-Root")
             .arg(root)
@@ -132,7 +164,7 @@ pub async fn discover(root: &Path) -> Result<Discovery> {
             .await
             .with_context(|| {
                 format!(
-                    "无法启动运行入口扩展（需要 PowerShell 7 / pwsh）：{}",
+                    "无法启动运行入口扩展（Windows 使用系统 PowerShell，其他平台需要 pwsh）：{}",
                     provider.display()
                 )
             })?;

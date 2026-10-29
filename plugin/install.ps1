@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 5.1
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)][string]$ExtensionsDirectory,
@@ -8,6 +8,7 @@ param(
     [switch]$SkipCommunity
 )
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot/zed-runner/scripts/platform.ps1"
 $repository = Split-Path $PSScriptRoot -Parent
 $ExtensionsDirectory = [IO.Path]::GetFullPath($ExtensionsDirectory)
 $buildDirectory = [IO.Path]::GetFullPath($BuildDirectory)

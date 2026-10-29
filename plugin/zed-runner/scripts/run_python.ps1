@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory=$true)][string]$Project,
     [Parameter(Mandatory=$true)][string]$Python,
     [string]$Uv,
@@ -6,6 +6,7 @@ param(
     [string]$Script
 )
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot/platform.ps1"
 $Project = [IO.Path]::GetFullPath($Project)
 $Python = [IO.Path]::GetFullPath($Python)
 $venv = [IO.Path]::GetDirectoryName([IO.Path]::GetDirectoryName($Python))
@@ -21,7 +22,7 @@ $ready = (Test-Path -LiteralPath $Python -PathType Leaf) -and
     ((Get-Content -LiteralPath $stamp -Raw) -eq $fingerprint)
 if (!$ready) {
     if (Test-Path -LiteralPath $pyproject -PathType Leaf) {
-        if (!$Uv -or ![IO.Path]::IsPathFullyQualified($Uv) -or !(Test-Path -LiteralPath $Uv -PathType Leaf)) {
+        if (!$Uv -or !(Test-RunnerAbsolutePath $Uv) -or !(Test-Path -LiteralPath $Uv -PathType Leaf)) {
             throw 'pyproject.toml 需要配置现有 uv 的绝对路径。'
         }
         $previousEnvironment = $env:UV_PROJECT_ENVIRONMENT
@@ -36,7 +37,7 @@ if (!$ready) {
         }
     }
     if (Test-Path -LiteralPath $requirements -PathType Leaf) {
-        if (!$BasePython -or ![IO.Path]::IsPathFullyQualified($BasePython) -or !(Test-Path -LiteralPath $BasePython -PathType Leaf)) {
+        if (!$BasePython -or !(Test-RunnerAbsolutePath $BasePython) -or !(Test-Path -LiteralPath $BasePython -PathType Leaf)) {
             throw 'requirements.txt 需要配置现有 Python 的绝对路径。'
         }
         if (!(Test-Path -LiteralPath $Python -PathType Leaf)) {
@@ -44,7 +45,7 @@ if (!$ready) {
             if ($LASTEXITCODE -ne 0) { throw "Python 创建虚拟环境失败：$venv" }
         }
         if ($Uv) {
-            if (![IO.Path]::IsPathFullyQualified($Uv) -or !(Test-Path -LiteralPath $Uv -PathType Leaf)) {
+            if (!(Test-RunnerAbsolutePath $Uv) -or !(Test-Path -LiteralPath $Uv -PathType Leaf)) {
                 throw 'python.uv 必须是现有 uv 的绝对路径。'
             }
             & $Uv pip install --python $Python -r $requirements

@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 5.1
 [CmdletBinding()]
 param(
     [string]$InstallDirectory = $PSScriptRoot,
@@ -12,7 +12,7 @@ $installRoot = [IO.Path]::GetFullPath($InstallDirectory).TrimEnd('\')
 if ($installRoot.Length -le [IO.Path]::GetPathRoot($installRoot).Length) {
     throw 'InstallDirectory must be an application directory, not a drive root.'
 }
-$manifest = Get-Content -LiteralPath (Join-Path $packageRoot 'bundle-manifest.json') -Raw | ConvertFrom-Json
+$manifest = Get-Content -LiteralPath (Join-Path $packageRoot 'bundle-manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 
 function Resolve-BundlePath([string]$Root, [string]$Relative) {
     if ([IO.Path]::IsPathRooted($Relative) -or @($Relative.Replace('\','/').Split('/') | Where-Object { $_ -in @('..','') }).Count) {

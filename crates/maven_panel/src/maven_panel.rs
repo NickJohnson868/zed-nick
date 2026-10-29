@@ -554,6 +554,8 @@ impl MavenPanel {
         let mut arguments = vec![
             "-NoLogo".into(),
             "-NoProfile".into(),
+            "-ExecutionPolicy".into(),
+            "Bypass".into(),
             "-File".into(),
             script.to_string_lossy().into_owned(),
             "-Root".into(),
@@ -599,7 +601,12 @@ impl MavenPanel {
             tags: vec![TASK_TAG.into()],
             shell: task::Shell::WithArguments {
                 program: shell,
-                args: vec!["-NoLogo".into(), "-NoProfile".into()],
+                args: vec![
+                    "-NoLogo".into(),
+                    "-NoProfile".into(),
+                    "-ExecutionPolicy".into(),
+                    "Bypass".into(),
+                ],
                 title_override: None,
             },
             allow_concurrent_runs: false,
@@ -635,6 +642,26 @@ impl MavenPanel {
 }
 
 fn find_powershell() -> String {
+    if cfg!(windows) {
+        if let Some(path) = std::env::var_os("PATH") {
+            let directories: Vec<_> = std::env::split_paths(&path).collect();
+            for name in ["powershell.exe", "pwsh.exe"] {
+                if let Some(candidate) = directories
+                    .iter()
+                    .map(|directory| directory.join(name))
+                    .find(|candidate| candidate.is_file())
+                {
+                    return candidate.to_string_lossy().into_owned();
+                }
+            }
+        }
+        return std::env::var_os("SystemRoot")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows"))
+            .join(r"System32\WindowsPowerShell\v1.0\powershell.exe")
+            .to_string_lossy()
+            .into_owned();
+    }
     let name = if cfg!(windows) { "pwsh.exe" } else { "pwsh" };
     if let Some(path) = std::env::var_os("PATH") {
         for directory in std::env::split_paths(&path) {

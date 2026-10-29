@@ -1,5 +1,5 @@
 #requires -Version 7.0
-param([Parameter(Mandatory=$true)][string]$JavaHome)
+param([Parameter(Mandatory=$true)][string]$JavaHome, [string]$RunnerShell = (Get-Process -Id $PID).Path)
 $ErrorActionPreference = 'Stop'
 $root = Join-Path ([IO.Path]::GetTempPath()) ("zed 模块 ' smoke " + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path "$root/.zed","$root/src/main/java" -Force | Out-Null
@@ -8,7 +8,7 @@ Set-Content -LiteralPath "$root/src/main/java/Main.java" -Value 'public class Ma
 $maven = Join-Path $root 'maven stub.ps1'
 Set-Content -LiteralPath $maven -Value @'
 $ErrorActionPreference = 'Stop'
-$javac = Join-Path $env:JAVA_HOME $(if ($IsWindows) { 'bin/javac.exe' } else { 'bin/javac' })
+$javac = Join-Path $env:JAVA_HOME $(if ($PSVersionTable.PSVersion.Major -lt 6 -or $IsWindows) { 'bin/javac.exe' } else { 'bin/javac' })
 New-Item -ItemType Directory -Path 'target/classes' -Force | Out-Null
 & $javac -encoding UTF-8 -d target/classes src/main/java/Main.java
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -17,13 +17,13 @@ Add-Content -LiteralPath 'target/build-count.txt' -Value 'build'
 '@
 @{environments=@{java=@{runtime=$JavaHome;build_tool=$maven;args=@("quote ' literal argument")}}} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath "$root/.zed/run-environments.json"
 $provider = Join-Path (Split-Path $PSScriptRoot -Parent) 'run-provider.ps1'
-$discovered = & $provider -Root $root | ConvertFrom-Json
+$discovered = & $RunnerShell -NoProfile -ExecutionPolicy Bypass -File $provider -Root $root | ConvertFrom-Json
 $entry = $discovered.entries | Where-Object language -eq 'java' | Select-Object -First 1
 if (!$entry) { throw "No module entry: $($discovered.warnings -join '; ')" }
 $runner = Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts/run_java.ps1'
 foreach ($iteration in 1..2) {
     $env:ZED_JAVA_ENTRY = $entry.task.env.ZED_JAVA_ENTRY
-    $output = & (Get-Process -Id $PID).Path -NoProfile -File $runner 2>&1 | Out-String
+    $output = & $RunnerShell -NoProfile -ExecutionPolicy Bypass -File $runner 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0 -or !$output.Contains("MODULE_OK quote ' literal argument")) { throw "Module launch failed: $output" }
 }
 if (@(Get-Content -LiteralPath "$root/target/build-count.txt").Count -ne 1) { throw 'Unchanged module was rebuilt' }

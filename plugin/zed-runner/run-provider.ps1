@@ -1,12 +1,12 @@
-param([Parameter(Mandatory=$true)][string]$Root)
+﻿param([Parameter(Mandatory=$true)][string]$Root)
 $ErrorActionPreference = 'Stop'
 $Root = [IO.Path]::GetFullPath($Root)
 $configPath = Join-Path $Root '.zed/run-environments.json'
-$config = if (Test-Path -LiteralPath $configPath) { Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json } else { $null }
+$config = if (Test-Path -LiteralPath $configPath) { Get-Content -LiteralPath $configPath -Raw -Encoding UTF8 | ConvertFrom-Json } else { $null }
 $entries = [Collections.Generic.List[object]]::new()
 $warnings = [Collections.Generic.List[string]]::new()
-$powerShellExecutable = (Get-Process -Id $PID).Path
 . "$PSScriptRoot/scripts/platform.ps1"
+$powerShellExecutable = Get-RunnerPowerShell
 . "$PSScriptRoot/scripts/workspace_files.ps1"
 try {
     $files = @(Get-WorkspaceFiles $Root)
@@ -16,7 +16,7 @@ try {
 }
 function Configured-File([string]$Value, [string]$Name) {
     if (!$Value) { return $null }
-    if (![IO.Path]::IsPathFullyQualified($Value) -or !(Test-Path -LiteralPath $Value -PathType Leaf)) {
+    if (!(Test-RunnerAbsolutePath $Value) -or !(Test-Path -LiteralPath $Value -PathType Leaf)) {
         $warnings.Add("$Name 必须是现有文件的绝对路径；已跳过对应入口")
         return $null
     }
@@ -30,7 +30,7 @@ function Runtime([string]$Language, [string]$Default = '') {
 function Java-Runtime {
     $jdkDirectory = [string]$config.environments.java.runtime
     if (!$jdkDirectory) { return $null }
-    if (![IO.Path]::IsPathFullyQualified($jdkDirectory) -or
+    if (!(Test-RunnerAbsolutePath $jdkDirectory) -or
         !(Test-Path -LiteralPath $jdkDirectory -PathType Container) -or
         !(Test-Path -LiteralPath (Join-Path $jdkDirectory $runnerJavaRelativePath) -PathType Leaf)) {
         $warnings.Add("java.runtime 必须是包含 $runnerJavaRelativePath 的 JDK 绝对目录；已跳过 Java 入口")
@@ -41,7 +41,7 @@ function Java-Runtime {
 function Maven-Runtime {
     $path = [string]$config.environments.java.build_tool
     if (!$path) { return $null }
-    if ([IO.Path]::IsPathFullyQualified($path) -and (Test-Path -LiteralPath $path -PathType Container)) {
+    if ((Test-RunnerAbsolutePath $path) -and (Test-Path -LiteralPath $path -PathType Container)) {
         foreach ($name in $(if ($IsWindows) { @('bin/mvnd.exe','bin/mvn.cmd','mvnd.exe','mvn.cmd') } else { @('bin/mvnd','bin/mvn','mvnd','mvn') })) {
             $candidate = Join-Path $path $name
             if (Test-Path -LiteralPath $candidate -PathType Leaf) { return [IO.Path]::GetFullPath($candidate) }
@@ -91,7 +91,7 @@ function Add-Entry([string]$Id, [string]$Language, [string]$File, [string]$Label
     $taskArguments = @($Arguments | ForEach-Object { "'" + $_.Replace("'", "''") + "'" })
     $taskArguments += '; exit $LASTEXITCODE'
     $task = @{ label=$Label; command=$taskCommand; args=$taskArguments; cwd=$Root; env=$Variables;
-               shell=@{ with_arguments=@{ program=$powerShellExecutable; args=@('-NoLogo','-NoProfile') } };
+               shell=@{ with_arguments=@{ program=$powerShellExecutable; args=@('-NoLogo','-NoProfile','-ExecutionPolicy','Bypass') } };
                save='all'; show_command=$false; show_summary=$true }
     $entry = @{ id=$Id; language=$Language; file=$File.Replace('\','/');
                 matching_extensions=@($Extensions); task=$task }
@@ -211,7 +211,7 @@ foreach ($file in @($files | Where-Object { $_ -like '*.java' })) {
     $debugEnvironment = Environment 'java'
     $privateConfigPath = Join-Path $Root '.zed/run-config.json'
     if (Test-Path -LiteralPath $privateConfigPath) {
-        $privateConfig = Get-Content -LiteralPath $privateConfigPath -Raw | ConvertFrom-Json
+        $privateConfig = Get-Content -LiteralPath $privateConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($privateConfig.env) {
             foreach ($variable in $privateConfig.env.PSObject.Properties) {
                 if (!$debugEnvironment.ContainsKey($variable.Name)) { $debugEnvironment[$variable.Name] = [string]$variable.Value }
@@ -245,7 +245,7 @@ foreach ($file in @($files | Where-Object { $_ -match '(^|/)package\.json$' })) 
     if (!$npmRuntime) { continue }
     $absolute = Join-Path $Root $file
     if (!(Test-Path -LiteralPath $absolute)) { continue }
-    try { $package = Get-Content -LiteralPath $absolute -Raw | ConvertFrom-Json } catch {
+    try { $package = Get-Content -LiteralPath $absolute -Raw -Encoding UTF8 | ConvertFrom-Json } catch {
         $warnings.Add("$file 无法解析：$($_.Exception.Message)")
         continue
     }
@@ -258,7 +258,7 @@ foreach ($file in @($files | Where-Object { $_ -match '(^|/)package\.json$' })) 
 }
 foreach ($item in @($config.entries)) {
     if (!$item) { continue }
-    $entry = $item | ConvertTo-Json -Depth 30 | ConvertFrom-Json -AsHashtable
+    $entry = ConvertTo-RunnerHashtable $item
     if ($entry.id -and $entry.task -and $entry.file) { $entries.Add($entry) }
 }
-@{ version=1; entries=@($entries.ToArray()); warnings=@($warnings.ToArray()) } | ConvertTo-Json -Depth 50 -Compress -EscapeHandling EscapeNonAscii
+@{ version=1; entries=@($entries.ToArray()); warnings=@($warnings.ToArray()) } | ConvertTo-RunnerJson -Depth 50

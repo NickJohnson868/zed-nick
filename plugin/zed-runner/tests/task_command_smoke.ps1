@@ -3,7 +3,8 @@ param(
     [string]$Npm = (Get-Command $(if ($IsWindows) { 'npm.cmd' } else { 'npm' }) -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source,
     [string]$Python = (Get-Command $(if ($IsWindows) { 'python.exe' } else { 'python3' }) -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source,
     [string]$JavaHome,
-    [string]$Go
+    [string]$Go,
+    [string]$RunnerShell = (Get-Process -Id $PID).Path
 )
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
@@ -39,7 +40,7 @@ if __name__ == "__main__":
     print("PYTHON_TASK_OK")
 '@
 $provider = Join-Path (Split-Path $PSScriptRoot -Parent) 'run-provider.ps1'
-$result = & $provider -Root $root | ConvertFrom-Json
+$result = & $RunnerShell -NoProfile -ExecutionPolicy Bypass -File $provider -Root $root | ConvertFrom-Json
 
 function Invoke-GeneratedTask($Task) {
     $command = $Task.command + ' ' + ($Task.args -join ' ')
@@ -82,7 +83,7 @@ if ($pythonResult.code -ne 0 -or !$pythonResult.output.Contains('PYTHON_TASK_OK'
 & $Python -m venv --without-pip (Join-Path $root '.venv')
 if ($LASTEXITCODE -ne 0) { throw 'Fixture virtual environment creation failed' }
 Add-Content -LiteralPath (Join-Path $root $pythonFile) -Value "import os, sys; print('VENV_OK=' + str(os.path.samefile(sys.prefix, os.path.join(os.path.dirname(__file__), '.venv'))))"
-$venvEntries = & $provider -Root $root | ConvertFrom-Json
+$venvEntries = & $RunnerShell -NoProfile -ExecutionPolicy Bypass -File $provider -Root $root | ConvertFrom-Json
 $venvTask = $venvEntries.entries | Where-Object id -eq "python:$pythonFile"
 $venvResult = Invoke-GeneratedTask $venvTask.task
 if ($venvResult.code -ne 0 -or !$venvResult.output.Contains('VENV_OK=True')) {

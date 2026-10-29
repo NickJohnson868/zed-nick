@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 5.1
 param(
     [Parameter(Mandatory=$true)][string]$Root,
     [Parameter(Mandatory=$true)][string]$Pom,
@@ -26,7 +26,7 @@ try {
     }
     $configuration = $null
     $settingsFile = Join-Path $Root '.zed/run-environments.json'
-    if (Test-Path -LiteralPath $settingsFile -PathType Leaf) { $configuration = Get-Content -LiteralPath $settingsFile -Raw | ConvertFrom-Json }
+    if (Test-Path -LiteralPath $settingsFile -PathType Leaf) { $configuration = Get-Content -LiteralPath $settingsFile -Raw -Encoding UTF8 | ConvertFrom-Json }
     $settings = $configuration.environments.java
     if ($settings.env) {
         foreach ($variable in $settings.env.PSObject.Properties) { [Environment]::SetEnvironmentVariable($variable.Name,[string]$variable.Value,'Process') }
@@ -36,7 +36,7 @@ try {
     if (!$javaHome) { $javaHome = [string]$settings.env.JAVA_HOME }
     if (!$javaHome) { $javaHome = [string]$defaults.environments.java.runtime }
     if ($javaHome) {
-        if (![IO.Path]::IsPathFullyQualified($javaHome) -or !(Test-Path -LiteralPath (Join-Path $javaHome $runnerJavaRelativePath) -PathType Leaf)) { throw 'java.runtime 必须是当前平台的 JDK 绝对目录。' }
+        if (!(Test-RunnerAbsolutePath $javaHome) -or !(Test-Path -LiteralPath (Join-Path $javaHome $runnerJavaRelativePath) -PathType Leaf)) { throw 'java.runtime 必须是当前平台的 JDK 绝对目录。' }
         $env:JAVA_HOME = $javaHome
         $env:PATH = (Join-Path $javaHome 'bin') + [IO.Path]::PathSeparator + $env:PATH
     }
@@ -53,11 +53,11 @@ try {
         $candidates = if ($IsWindows) { @('bin/mvnd.exe','bin/mvn.cmd','mvnd.exe','mvn.cmd') } else { @('bin/mvnd','bin/mvn','mvnd','mvn') }
         $buildTool = @($candidates | ForEach-Object { Join-Path $buildTool $_ } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1)[0]
     }
-    if (!$buildTool -or ![IO.Path]::IsPathFullyQualified($buildTool) -or !(Test-Path -LiteralPath $buildTool -PathType Leaf)) { throw '未找到 Maven；请在 .zed/run-environments.json 的 java.build_tool 中配置 Maven/MVND，或提供 mvnw。' }
+    if (!$buildTool -or !(Test-RunnerAbsolutePath $buildTool) -or !(Test-Path -LiteralPath $buildTool -PathType Leaf)) { throw '未找到 Maven；请在 .zed/run-environments.json 的 java.build_tool 中配置 Maven/MVND，或提供 mvnw。' }
     Set-Location -LiteralPath $reactorDirectory
     if ($AlsoMake -and !$Pom.Equals($ReactorPom,$runnerPathComparison)) {
-        $relative = [IO.Path]::GetRelativePath($reactorDirectory,(Split-Path $Pom -Parent))
-        if ([IO.Path]::IsPathFullyQualified($relative)) { throw '所选模块不在当前 Reactor 内。' }
+        $relative = (Get-RunnerRelativePath $reactorDirectory (Split-Path $Pom -Parent))
+        if ((Test-RunnerAbsolutePath $relative)) { throw '所选模块不在当前 Reactor 内。' }
         $arguments += @('-f',$ReactorPom,'-pl',$relative,'-am')
     } else { $arguments += @('-f',$Pom) }
     $arguments += '-B'

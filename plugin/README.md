@@ -12,8 +12,9 @@ Downloaded packages and compiler outputs stay in the ignored `.local-plugin-buil
 The Windows portable builder includes these plugin runtimes automatically; it
 never copies a user's settings, accounts or language-server caches into the ZIP.
 
-The runner uses **PowerShell 7 (`pwsh`) on every platform**. Install it on the
-target machine. macOS GUI launches also search `/opt/homebrew/bin/pwsh` and
+On Windows the runner automatically finds the system PowerShell (5.1 or 7);
+PowerShell 7 is not required to run or install the bundled plugins. macOS and
+Linux use `pwsh`. macOS GUI launches also search `/opt/homebrew/bin/pwsh` and
 `/usr/local/bin/pwsh`. The generated environment template discovers tools on
 that machine; do not copy Windows executable paths into a Mac configuration.
 Java needs a JDK, Maven projects need Maven/MVND, and Python projects use their
@@ -48,7 +49,7 @@ pwsh -NoProfile -File plugin/install.ps1 -ExtensionsDirectory "${XDG_DATA_HOME:-
 Windows portable installation:
 
 ```powershell
-pwsh -NoProfile -File plugin/install.ps1 -ExtensionsDirectory 'C:\path\to\Zed-Nick\portable-data\extensions'
+powershell -NoProfile -ExecutionPolicy Bypass -File plugin/install.ps1 -ExtensionsDirectory 'C:\path\to\Zed-Nick\portable-data\extensions'
 ```
 
 Use the actual profile's `extensions` directory when launching with a custom

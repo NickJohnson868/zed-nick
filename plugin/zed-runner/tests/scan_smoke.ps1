@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot/../scripts/platform.ps1"
 . "$PSScriptRoot/../scripts/workspace_files.ps1"

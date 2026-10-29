@@ -12,7 +12,7 @@
 
 打包统一调用 `plugin/install.ps1`：编译 Java fork、MyBatis、Runner，从 `plugin/community.json` 中的官方链接下载并校验 HTML、SQL、XML。社区源码不存入仓库。IDEA Islands 是内置主题。已有应用和插件构建产物时，可用 `-SkipBuild -SkipPluginBuild` 只组装；插件构建缓存默认位于 `.local-plugin-build`。组装目录一旦含个人配置等数据，需要另选空目录；ZIP 仅允许携带插件数据。
 
-更新本机时，在解压目录执行 `pwsh -NoProfile -File ./Update-Zed.ps1 -InstallDirectory 'C:\path\to\Zed-Nick'`。脚本校验文件并备份旧文件，保留个人设置；若 Zed 正在运行，会等待正常退出后覆盖，不自动重启。
+更新本机时，在解压目录执行 `powershell -NoProfile -ExecutionPolicy Bypass -File ./Update-Zed.ps1 -InstallDirectory 'C:\path\to\Zed-Nick'`。兼容 Windows 自带的 PowerShell 5.1，无需安装 PS7。脚本校验文件并备份旧文件，保留个人设置；若 Zed 正在运行，会等待正常退出后覆盖，不自动重启。
 
 首次迁移会排除崩溃处理通信文件等临时 socket，保留开发扩展的目录链接，并使用原子目录重命名完成迁移。AMD AGS 6.3.0 依赖优先从已有 Zed 获取，缺少时从上游固定版本 SDK 下载；OpenConsole 从构建输出查找。
 
