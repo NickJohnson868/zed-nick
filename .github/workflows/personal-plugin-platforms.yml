@@ -59,6 +59,8 @@ jobs:
           rustup target add wasm32-wasip2
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           cargo check --locked --manifest-path plugin/zed-mybatis-jump/Cargo.toml -p zed-mybatis-jump --target wasm32-wasip2
+      - name: Check Java syntax highlighting
+        run: cargo test --locked --manifest-path plugin/zed-java-fork/tests/highlights/Cargo.toml
       - name: Check Java native components and portable extension
         run: |
           cargo test --locked --manifest-path plugin/zed-java-fork/Cargo.toml -p proxy-common -p java-lsp-proxy -p gradle-lsp-bridge

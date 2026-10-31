@@ -9,7 +9,7 @@
 (method_invocation
   name: (identifier) @function)
 
-(super) @function
+(super) @keyword
 
 ; Parameters
 (formal_parameter
@@ -92,8 +92,8 @@
 
 (type_identifier) @type
 
-((type_identifier) @type
-  (#eq? @type "var"))
+((type_identifier) @keyword
+  (#eq? @keyword "var"))
 
 (object_creation_expression
   type: (type_identifier) @constructor)
@@ -128,22 +128,22 @@
   (integral_type)
   (floating_point_type)
   (void_type)
-] @type
+] @keyword
 
 ; Variables
 ((identifier) @constant
   (#match? @constant "^[A-Z_$][A-Z\\d_$]*$"))
 
-(this) @variable
+(this) @keyword
 
 ; Annotations
 (annotation
-  "@" @punctuation.special
-  name: (identifier) @attribute)
+  "@" @attribute
+  name: [(identifier) (scoped_identifier)] @attribute)
 
 (marker_annotation
-  "@" @punctuation.special
-  name: (identifier) @attribute)
+  "@" @attribute
+  name: [(identifier) (scoped_identifier)] @attribute)
 
 ; Literals
 (string_literal) @string
@@ -166,7 +166,7 @@
   (false)
 ] @boolean
 
-(null_literal) @constant.builtin
+(null_literal) @keyword
 
 ; Keywords
 [
