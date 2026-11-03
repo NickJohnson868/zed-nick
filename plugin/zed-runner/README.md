@@ -29,3 +29,11 @@ $result = & 'C:\Users\62453\Documents\projects\zed-nick\plugin\zed-runner\run-pr
 $result.entries | Group-Object language | Select-Object Name,Count
 $result.entries | Where-Object { !$_.debug } | Select-Object id
 ```
+
+## Spring Boot 开发热更新
+
+在 Java 运行环境中设置 `hot_reload: true`，重新扫描后选择“Java 热更新 · 主类”。项目需提供 `dev-hot-reload` Maven profile：将所有模块的 build.directory 设为 `${project.basedir}/target/dev-hot-reload`，并为启动模块提供 DevTools 依赖。运行器只使用该目录中的 Maven 产物，避免与语言服务后台编译混用。开发环境通过现有 args/env 选择，不使用生产数据库。
+
+运行器保存监听发现变化后调用 Maven，成功才更新 DevTools 触发文件；失败等待修正后再次保存。修改 POM/依赖后重新启动，删除或移动类后先停止并用该 profile clean 再运行。热更新会重建 Spring 上下文，并非零中断。普通运行与调试入口保持原行为。
+
+Windows 使用系统 PowerShell 5.1 或 7；macOS/Linux 使用 pwsh。所有平台均在各自 java.runtime、java.build_tool 中配置本机 JDK/Maven 绝对路径，不依赖项目内的 PowerShell 脚本。macOS/Linux 仍需要安装 pwsh，不代表无需脚本运行时。

@@ -1,4 +1,4 @@
-﻿param([switch]$BuildOnly)
+﻿param([switch]$BuildOnly, [switch]$HotReload)
 $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
@@ -7,18 +7,33 @@ $argumentFile = $null
 $classpathJar = $null
 $mutex = $null
 $locked = $false
+$application = $null
 . "$PSScriptRoot/platform.ps1"
 . "$PSScriptRoot/workspace_files.ps1"
 
-function Get-InputStamp([string]$Root, [string[]]$Modules, [string]$Identity) {
+function Get-InputStamp([string]$Root, [string[]]$Modules, [string]$Identity, [switch]$WatchDependencies) {
     $hash = [Security.Cryptography.IncrementalHash]::CreateHash([Security.Cryptography.HashAlgorithmName]::SHA256)
     $files = [Collections.Generic.List[string]]::new()
     try {
-        foreach ($relative in @(Get-WorkspaceFiles $Root -StrictFallback)) {
+        $workspaceFiles=@(Get-WorkspaceFiles $Root -StrictFallback)
+        if ($WatchDependencies) {
+            # Entry discovery may exclude library modules; runtime dependencies still need watching.
+            foreach ($classDirectory in @($paths | Where-Object { $_ -match '[\\/]target[\\/]dev-hot-reload[\\/]classes$' })) {
+                $dependencyRoot=Split-Path (Split-Path (Split-Path $classDirectory -Parent) -Parent) -Parent
+                if (!(Test-RunnerPathWithin $dependencyRoot $Root)) { continue }
+                $sourceRoot=Join-Path $dependencyRoot 'src/main'
+                if (Test-Path -LiteralPath $sourceRoot) {
+                    $workspaceFiles+=@(Get-ChildItem -LiteralPath $sourceRoot -Recurse -File | ForEach-Object { Get-RunnerRelativePath $Root $_.FullName })
+                }
+                $dependencyPom=Join-Path $dependencyRoot 'pom.xml'
+                if (Test-Path -LiteralPath $dependencyPom) { $workspaceFiles+=Get-RunnerRelativePath $Root $dependencyPom }
+            }
+        }
+        foreach ($relative in @($workspaceFiles | Sort-Object -Unique)) {
             $path = Join-Path $Root $relative
             if (!(Test-Path -LiteralPath $path -PathType Leaf)) { continue }
             $item = [IO.FileInfo]::new($path)
-            $source = $relative -match '(^|/)src/' -or $item.Extension -in @('.java','.kt','.scala','.groovy','.proto')
+            $source = $relative -match '(^|[\\/])src[\\/]' -or $item.Extension -in @('.java','.kt','.scala','.groovy','.proto')
             $inScope = !$Modules.Count
             if ($source -and !$inScope) {
                 foreach ($module in $Modules) {
@@ -94,7 +109,7 @@ try {
         if (!(Test-RunnerAbsolutePath $maven) -or !(Test-Path -LiteralPath $maven -PathType Leaf)) {
             throw '请在 java.build_tool 中配置 Maven/MVND 可执行文件的绝对路径。'
         }
-        $target=Join-Path $moduleDirectory 'target'
+        $target=Join-Path $moduleDirectory $(if ($HotReload) { 'target/dev-hot-reload' } else { 'target' })
         $classpathFile=Join-Path $target 'zed-run-classpath.txt'
         $stateFile=Join-Path $target 'zed-run-state.json'
         $classes=Join-Path $target 'classes'
@@ -112,13 +127,15 @@ try {
             $stamp=Get-StampOrUncertain $root @($state.modules) $identity
             $fresh=$stamp -and $stamp -eq $state.inputs -and (Get-OutputStamp @($state.paths)) -eq $state.outputs -and (Get-FileHash -LiteralPath $classpathFile).Hash -eq $state.classpathHash
         }
-        if (!$fresh) {
+        if (!$fresh -or $HotReload) {
             $before=Get-StampOrUncertain $root @() $identity
             $relativeModule=(Get-RunnerRelativePath $root $moduleDirectory)
             $buildArguments=@('-f',$modulePom)
             if ((Test-Path -LiteralPath (Join-Path $root 'pom.xml')) -and $relativeModule -ne '.') { $buildArguments=@('-f',(Join-Path $root 'pom.xml'),'-pl',$relativeModule,'-am') }
             if ([IO.Path]::GetFileNameWithoutExtension($maven) -eq 'mvnd') { $buildArguments+="-Dmvnd.java.home=$env:JAVA_HOME" }
-            & $maven @buildArguments '-B' '-T' '8' '-DskipTests' 'compile' 'dependency:build-classpath' '-DincludeScope=runtime' '-Dmdep.outputFile=target/zed-run-classpath.txt' '-Dmdep.regenerateFile=true'
+            if ($HotReload) { $buildArguments+='-Pdev-hot-reload' }
+            $classpathOutput=if ($HotReload) { '-Dmdep.outputFile=target/dev-hot-reload/zed-run-classpath.txt' } else { '-Dmdep.outputFile=target/zed-run-classpath.txt' }
+            & $maven @buildArguments '-B' '-T' '8' '-DskipTests' 'compile' 'dependency:build-classpath' '-DincludeScope=runtime' $classpathOutput '-Dmdep.regenerateFile=true'
             if ($LASTEXITCODE -ne 0) { throw "增量构建失败（退出码 $LASTEXITCODE），未启动应用。" }
             if (!(Test-Path -LiteralPath $classpathFile) -or !(Test-Path -LiteralPath $mainClassFile)) { throw '未生成启动类或 classpath，请检查 Main 类和模块。' }
             $paths=@($classes)+@(([IO.File]::ReadAllText($classpathFile).Trim() -split [regex]::Escape([string][IO.Path]::PathSeparator)) | Where-Object { $_ })
@@ -133,6 +150,13 @@ try {
             }
         }
         $classpath=$classes+[IO.Path]::PathSeparator+[IO.File]::ReadAllText($classpathFile).Trim()
+        if ($HotReload) {
+            if ($classpath -notmatch 'spring-boot-devtools-[^/\\;:]+\.jar') { throw '热更新 profile 未提供 Spring Boot DevTools。' }
+            $trigger=Join-Path $classes '.dev-reload-trigger'
+            [IO.File]::WriteAllText($trigger,[Guid]::NewGuid().ToString())
+            $javaArguments+=@('-Dspring.devtools.add-properties=false','-Dspring.devtools.livereload.enabled=false',
+                '-Dspring.devtools.restart.trigger-file=.dev-reload-trigger','-Dspring.devtools.restart.poll-interval=2s','-Dspring.devtools.restart.quiet-period=1s')
+        }
         $javaArguments+=@('-cp',$classpath,[string]$entry.class)
         $mutex.ReleaseMutex();$locked=$false
     } else {
@@ -183,10 +207,44 @@ try {
         }
     }
     $javaArguments+=@($entry.args)
-    & $java @javaArguments
-    exit $LASTEXITCODE
+    if (!$HotReload) {
+        & $java @javaArguments
+        exit $LASTEXITCODE
+    }
+    if (!$entry.module) { throw '热更新需要 Maven 模块及 dev-hot-reload profile。' }
+    $startInfo=[Diagnostics.ProcessStartInfo]::new($java)
+    $startInfo.UseShellExecute=$false
+    $startInfo.WorkingDirectory=$root
+    # Windows PowerShell 5.1 does not provide ProcessStartInfo.ArgumentList.
+    $startInfo.Arguments=(@($javaArguments | ForEach-Object {
+        '"'+[regex]::Replace([regex]::Replace([string]$_,'(\\*)"','$1$1\"'),'(\\+)$','$1$1')+'"'
+    }) -join ' ')
+    $application=[Diagnostics.Process]::Start($startInfo)
+    $sourceStamp=Get-InputStamp $root @() $identity -WatchDependencies
+    Write-Host '开发热更新已启动：保存后自动编译，成功后重启。Ctrl+C 停止。'
+    while (!$application.HasExited) {
+        Start-Sleep -Seconds 2
+        $currentStamp=Get-InputStamp $root @() $identity -WatchDependencies
+        if ($currentStamp -eq $sourceStamp) { continue }
+        Start-Sleep -Seconds 1
+        $sourceStamp=Get-InputStamp $root @() $identity -WatchDependencies
+        try { $locked=$mutex.WaitOne([TimeSpan]::FromSeconds(5)) } catch [Threading.AbandonedMutexException] { $locked=$true }
+        if (!$locked) { Write-Warning '项目正在构建，稍后重试。'; $sourceStamp=''; continue }
+        try {
+            & $maven @buildArguments '-B' '-T' '8' '-DskipTests' 'compile'
+            if ($LASTEXITCODE -eq 0) {
+                [IO.File]::WriteAllText($trigger,[Guid]::NewGuid().ToString())
+                Write-Host '编译成功，已通知 DevTools 重启。'
+            } else { Write-Warning '编译失败，未触发重启；修正并保存后重试。' }
+        } finally { $mutex.ReleaseMutex(); $locked=$false }
+    }
+    exit $application.ExitCode
 } catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }
 finally {
+    if ($application) {
+        if (!$application.HasExited) { $application.Kill(); $application.WaitForExit() }
+        $application.Dispose()
+    }
     if ($locked) { $mutex.ReleaseMutex() }
     if ($mutex) { $mutex.Dispose() }
     if ($argumentFile -and (Test-Path -LiteralPath $argumentFile)) { Remove-Item -LiteralPath $argumentFile -Force }

@@ -239,6 +239,10 @@ foreach ($file in @($files | Where-Object { $_ -like '*.java' })) {
         $debug = $null
     }
     Add-Entry "java:$file" 'java' $file "Java · $main" $powerShellExecutable @('-NoLogo','-NoProfile','-File',"$PSScriptRoot/scripts/run_java.ps1") $environment @('java') $debug
+    if ($module -and $settings.hot_reload) {
+        Add-Entry "java-hot-reload:$file" 'java' $file "Java 热更新 · $main" $powerShellExecutable @('-NoLogo','-NoProfile','-File',"$PSScriptRoot/scripts/run_java.ps1",'-HotReload') $environment @('java','xml','yaml') $null
+        $entries[$entries.Count-1].task.allow_concurrent_runs=$false
+    }
 }
 $npmRuntime = Runtime 'javascript'
 foreach ($file in @($files | Where-Object { $_ -match '(^|/)package\.json$' })) {
