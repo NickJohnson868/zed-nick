@@ -6,44 +6,50 @@ plugin. Its generator and pinned sources live in `script/themes/idea-islands-202
 
 `community.json` lists the community HTML, SQL and XML extensions by repository,
 version, official download URL and archive SHA-256. Their source is not vendored.
-`install.ps1` installs both personal and community plugins. Use `-SkipCommunity`
+`install.py` installs personal and pinned community plugins without PowerShell;
+`install.ps1` remains an optional Windows installer. Use `--skip-community`
 only for isolated tests or when explicitly installing personal plugins alone.
 Downloaded packages and compiler outputs stay in the ignored `.local-plugin-build`.
 The Windows portable builder includes these plugin runtimes automatically; it
 never copies a user's settings, accounts or language-server caches into the ZIP.
 
-On Windows the runner automatically finds the system PowerShell (5.1 or 7);
-PowerShell 7 is not required to run or install the bundled plugins. macOS and
-Linux use `pwsh`. macOS GUI launches also search `/opt/homebrew/bin/pwsh` and
-`/usr/local/bin/pwsh`. The generated environment template discovers tools on
+The native app discovers and launches Java, Python, Go and npm entries without
+PowerShell on Windows, macOS and Linux. The Maven panel also calls Maven directly.
+Java workflows reuse the configured JDK and Maven; Python workflows reuse their
+configured Python or uv. The generated environment template discovers tools on
 that machine; do not copy Windows executable paths into a Mac configuration.
 Java needs a JDK, Maven projects need Maven/MVND, and Python projects use their
 configured interpreter or virtual environment. Existing scan whitelists,
 Git ignores, project trust and path checks remain in effect.
 
-The compatibility checks use JDK 21 and Chinese project paths. Older Java
+The native compatibility checks use JDK 25 and Chinese project paths. Older Java
 launchers can still impose their own restrictions on emoji paths or non-ASCII
 application arguments on Windows code pages; the runner does not change the
 machine's system encoding. Use a JDK that supports the required characters.
 
 ## Build and install on the target machine
 
+Java gutter tasks are packaged for their target OS: Unix uses its built-in
+`/bin/sh`, and Windows uses its preinstalled Windows PowerShell 5.1. They do not
+require PowerShell 7 or Git Bash. These optional language tasks do not run an
+automatic `clean`; the toolbar and Maven panel use the native app path above.
+
 Install Rust, the native C/C++ toolchain, Git and tar. The Java extension builder
 also needs the grammar build dependencies used by Zed's extension tooling.
-`install.ps1` builds the Java grammar WASM files using Zed's extension builder,
+The build-machine installer (Python 3.12+) builds Java grammar WASM files using Zed's extension builder,
 not just its Rust extension. Java proxies and the MyBatis server are compiled
 for the current Rust host architecture, including Apple Silicon or Intel Macs.
 
 macOS:
 
 ```bash
-pwsh -NoProfile -File plugin/install.ps1 -ExtensionsDirectory "$HOME/Library/Application Support/Zed/extensions"
+python3 plugin/install.py --extensions-directory "$HOME/Library/Application Support/Zed/extensions"
 ```
 
 Linux (adjust for a custom `XDG_DATA_HOME`):
 
 ```bash
-pwsh -NoProfile -File plugin/install.ps1 -ExtensionsDirectory "${XDG_DATA_HOME:-$HOME/.local/share}/zed/extensions"
+python3 plugin/install.py --extensions-directory "${XDG_DATA_HOME:-$HOME/.local/share}/zed/extensions"
 ```
 
 Windows portable installation:
@@ -61,8 +67,8 @@ Load the plugins on the next manual restart. A user-configured
 override on a Mac to use the bundled native server. XML language support must
 also be installed through Zed's extension browser.
 
-For an existing `zed-extension` builder, pass `-ExtensionBuilder /path/to/zed-extension`.
-`-SkipBuild` reuses artifacts only from the specified build directory and checks
+For an existing `zed-extension` builder, pass `--extension-builder /path/to/zed-extension`.
+`--skip-build` reuses artifacts only from the specified build directory and checks
 that all current-host outputs exist before installing. No profile or credentials
 are included in a plugin build.
 
@@ -94,16 +100,13 @@ dependency tree in the terminal. Unknown plugins expose `help:describe`.
 }
 ```
 
-Rebuild the app for this native feature and update `zed-runner` to **0.2.1** or
-later for `scripts/run_maven.ps1`. Updating only the extension does not add the
+Rebuild the app and update `zed-runner` to **0.3.0** for the native runtime. Updating only the extension does not add the
 native panel to older app binaries.
 
 ## Runtime checks
 
-```powershell
-./plugin/zed-runner/tests/task_command_smoke.ps1 -JavaHome $env:JAVA_HOME
-./plugin/zed-runner/tests/java_module_smoke.ps1 -JavaHome $env:JAVA_HOME
-./plugin/zed-runner/tests/scan_smoke.ps1
+```sh
+python plugin/zed-runner/tests/native_smoke.py
 ```
 
 These launch isolated fixture programs, not business applications. The GitHub

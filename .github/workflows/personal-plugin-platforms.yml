@@ -4,12 +4,18 @@ on:
     branches: [main]
     paths:
       - 'plugin/**'
-      - 'crates/title_bar/src/run_*.rs'
+      - 'crates/**'
+      - 'assets/**'
+      - 'Cargo.*'
+      - '.rules'
       - '.github/workflows/personal-plugin-platforms.yml'
   pull_request:
     paths:
       - 'plugin/**'
-      - 'crates/title_bar/src/run_*.rs'
+      - 'crates/**'
+      - 'assets/**'
+      - 'Cargo.*'
+      - '.rules'
       - '.github/workflows/personal-plugin-platforms.yml'
   workflow_dispatch:
 permissions:
@@ -21,48 +27,70 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 60
     defaults:
       run:
-        shell: pwsh
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '25'
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Launch generated tasks
-        run: ./plugin/zed-runner/tests/task_command_smoke.ps1 -JavaHome $env:JAVA_HOME
-      - name: Launch Java modules and reuse cache
-        run: ./plugin/zed-runner/tests/java_module_smoke.ps1 -JavaHome $env:JAVA_HOME
-      - name: Check whitelist and Git ignores
-        run: ./plugin/zed-runner/tests/scan_smoke.ps1
-      - name: Check Maven panel tasks
-        run: ./plugin/zed-runner/tests/maven_smoke.ps1
-      - name: Check system Windows PowerShell 5.1
+      - name: Exercise native runtimes without PowerShell
+        run: python plugin/zed-runner/tests/native_smoke.py
+      - name: Check UTF-8 output through a real Windows pseudo console
         if: runner.os == 'Windows'
-        run: ./plugin/zed-runner/tests/powershell51_smoke.ps1 -JavaHome $env:JAVA_HOME
-      - name: Check platform installation layout
-        run: ./plugin/zed-runner/tests/install_smoke.ps1
-      - name: Install pinned community extensions
-        run: ./plugin/install-community.ps1 -ExtensionsDirectory .local-community-test/extensions
+        run: python plugin/zed-runner/tests/windows_console_smoke.py
+      - name: Install pinned community extensions without PowerShell
+        run: python plugin/install.py --community-only --extensions-directory .local-community-test/extensions
       - name: Check MyBatis native server and portable extension
         run: |
           cargo test --locked --manifest-path plugin/zed-mybatis-jump/Cargo.toml -p mybatis-jump-lsp
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
           rustup target add wasm32-wasip2
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
           cargo check --locked --manifest-path plugin/zed-mybatis-jump/Cargo.toml -p zed-mybatis-jump --target wasm32-wasip2
       - name: Check Java syntax highlighting
         run: cargo test --locked --manifest-path plugin/zed-java-fork/tests/highlights/Cargo.toml
       - name: Check Java native components and portable extension
         run: |
           cargo test --locked --manifest-path plugin/zed-java-fork/Cargo.toml -p proxy-common -p java-lsp-proxy -p gradle-lsp-bridge
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
           cargo check --locked --manifest-path plugin/zed-java-fork/Cargo.toml -p zed_java --target wasm32-wasip2
+  app:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: script/linux
+      - name: macOS build dependencies
+        if: runner.os == 'macOS'
+        run: brew install cmake ninja
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: personal-app-${{ runner.os }}
+      - name: Compile personal app features on this platform
+        run: cargo check --locked -p zed -p maven_panel
+      - name: Check native entry discovery and task contracts
+        run: cargo test --locked -p title_bar --lib native_entries_do_not_require_powershell

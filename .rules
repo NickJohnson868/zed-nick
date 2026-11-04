@@ -1,5 +1,8 @@
 # Rust coding guidelines
 
+* Personal Zed changes and plugins must support Windows, macOS and Linux. Do not require end users to install PowerShell 7, Python or Node merely to use an editor feature; project language runtimes and build tools may be reused for their own language workflows. Package native plugin binaries for the target OS and architecture. Test platform behavior explicitly and do not describe compilation or source inspection as a successful runtime test.
+* Batch implementation and static review before compiling. Reuse successful validation for unchanged code. On this workstation, keep the final incremental build to at most two jobs and send broad test matrices to CI instead of repeatedly compiling them locally.
+
 * Prioritize code correctness and clarity. Speed and efficiency are secondary priorities unless otherwise specified.
 * Do not write organizational or comments that summarize the code. Comments should only be written in order to explain "why" the code is written in some way in the case there is a reason that is tricky / non-obvious.
 * Prefer implementing functionality in existing files unless it is a new logical component. Avoid creating many small files.

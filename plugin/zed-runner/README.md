@@ -1,39 +1,38 @@
-# 个人运行与调试入口
+# Personal Run and Debug
 
-此目录位于 `zed-nick/plugin/zed-runner`，是 Zed-Nick 的本地开发扩展。右上角的入口选择、运行、调试、停止按钮由 Zed-Nick 提供；具体扫描规则、运行命令和调试配置由本目录的 `run-provider.ps1` 返回。修改脚本后，在入口菜单选“重新扫描入口 / 重载运行环境”，无需重新编译 Zed。
+ZedNick 通过原生 Rust 代码扫描 Java、Python、Go 和 npm 入口，在工具栏选择后运行或调试。Windows、macOS、Linux 均不要求安装 PowerShell 7；运行各语言项目时复用该项目配置的工具。此功能需要配套的新 ZedNick 主程序和 0.3.0 插件，单独更新插件不能改变旧主程序的扫描方式。
 
-安装到绿色版时，将本目录放到绿色版的 `portable-data/extensions/installed/zed-runner`。开发机上也可以把该目录链接到本目录，修改脚本后在入口菜单选择“重新扫描入口 / 重载运行环境”。
+插件安装目录为当前配置目录下的 extensions/installed/zed-runner。构建机使用仓库的 plugin/install.py 打包当前 OS/CPU 的 Java、MyBatis 原生程序及插件；最终使用者不需要安装 Python、Rust 或 PowerShell 来安装已经打包好的插件。
 
-```powershell
-$installed = 'C:\Users\62453\Documents\tools\Zed-Nick\portable-data\extensions\installed\zed-runner'
-$source = 'C:\Users\62453\Documents\projects\zed-nick\plugin\zed-runner'
-New-Item -ItemType Junction -Path $installed -Target $source
-```
+## 项目运行环境
 
-插件读取项目的 `.zed/run-environments.json`。在入口菜单中选择“编辑运行环境”时，首次创建配置会运行 `config-template.ps1`，从已配置的环境变量和工具路径生成绝对路径；自动填写不到的路径需要手动补齐。`java.runtime` 是包含 `bin/java.exe` 的 JDK 目录，`java.build_tool` 是 `mvn.cmd` 或 `mvnd.exe` 的绝对路径，`python.runtime`、`python.uv`、`go.runtime`、`javascript.runtime` 都是可执行文件的绝对路径。运行时不回退到全局 PATH。`env` 中可配置环境变量，并传递给运行、调试和依赖安装任务。Java 运行任务继续在启动时读取 `.zed/run-config.json` 的私密环境变量；Java 调试配置也会读取该文件。不要把含密钥的配置提交到 Git。
+编辑 `.zed/run-environments.json`，工具路径分别在每台电脑配置，不复制 Windows 路径到 Mac/Linux。运行环境模板由原生代码发现本机工具生成：
 
-Python 的 `pyproject.toml` 入口要求配置 `python.uv`，`requirements.txt` 入口要求配置 `python.runtime`；两种文件都有时两条路径都必须配置。没有依赖文件时也要求配置 `python.runtime`。运行和调试优先使用入口附近的 `.venv/Scripts/python.exe`，缺失时由依赖安装任务创建项目内虚拟环境；没有所需工具路径的入口不扫描。`uv` 项目用 `uv sync`，`requirements.txt` 项目用 `uv pip` 或本地虚拟环境的 pip 安装依赖；依赖文件未变时复用安装结果。入口扫描本身不安装依赖。Go 入口要求 `go.runtime`，npm 入口要求 `javascript.runtime`。Java Main 要求 `java.runtime`；Maven 模块还要求 `java.build_tool`。
+- `java.runtime`：JDK 目录；Maven 项目另配 `java.build_tool` 为 Maven/MVND 文件或其安装目录。Java 运行器使用配置的 JDK，不另找脚本解释器。
+- `python.runtime`：Python 可执行文件；`python.uv`：可选 uv。pyproject.toml 项目需要 uv；requirements.txt 项目需要 Python，可选用 uv 安装依赖，否则使用 Python 自身的 venv/pip。
+- `go.runtime`：Go 可执行文件。
+- `javascript.runtime`：npm 可执行文件。
 
-`run-provider.ps1 -Root <项目目录>` 向标准输出返回一个 JSON 对象：`version: 1`、`entries`、`warnings`。每个入口有 `id`、`language`、相对项目路径 `file`、`matching_extensions`、Zed `TaskTemplate` 格式的 `task`，以及可选的 Zed `DebugScenario` 格式的 `debug`。没有 `debug` 的入口不启用调试按钮。当前自动扫描 Java `main`、Python `__main__`、Go `main` 和 npm scripts；项目配置中的 `entries` 可以追加自定义入口。Go 使用 Zed 的 Delve 适配器，Python 使用 Debugpy，Java 使用已安装 Java 扩展的调试适配器。首次调试可能需要下载适配器，Java 还需要语言服务完成项目导入。
+各语言的 env 是其运行、依赖准备和调试环境变量。Java 的 args、jvm_args 分别是应用与 JVM 参数。Java 还读取 `.zed/run-config.json` 中的私密环境变量，以新运行环境里的同名变量为准；这些配置不得提交到 Git。
 
-Git 项目通过 `git ls-files --cached --others --exclude-standard` 获取候选文件，自动遵守 `.gitignore` 和 Git 的其他忽略规则；即使结果为空也不会退回无过滤的目录遍历。非 Git 目录才使用内置目录扫描。Java 增量构建的输入指纹采用相同的候选文件范围。
+配置中的 entries 可以追加自定义任务，任务指定的工具由用户自己负责。自动入口使用系统自带的 Windows CMD 或 Unix /bin/sh，路径和参数分别转义。Python 依赖环境由配置的 Python/uv 准备，Go/npm 直接调用配置的工具。调试分别使用 Java、Debugpy、Delve 适配器，不再通过 PowerShell 构建前置任务。
 
-自动生成的运行任务在 Windows 自动查找系统 PowerShell，兼容 5.1 和 7，无需另装 PS7；macOS、Linux 使用 pwsh。可执行文件路径及每个参数都独立转义，支持 `C:\Program Files\nodejs\npm.cmd` 等带空格的路径。自定义 `entries` 中的任务保留用户指定的命令和 shell。
-
-项目可在 `.zed/runner-ignore.json` 中指定白名单与忽略名单，例如 `{"scan_directories":["ai-manager-app","script"],"ignore_directories":["tools"]}`。创建此文件后只扫描白名单目录；忽略名单只在白名单内生效。`scan_directories` 使用项目根目录相对路径，填 `"."` 表示整个项目。`ignore_directories` 中单个目录名（如 `tools`）匹配白名单内任意层级；相对路径（如 `script/generated`）只匹配项目根目录下的对应目录。Git 忽略规则始终生效。不创建此文件时沿用原有扫描范围。修改后在入口菜单选择“重新扫描入口 / 重载运行环境”。
-
-可直接检查入口数量和调试支持，不打印环境变量：
-
-```powershell
-$result = & 'C:\Users\62453\Documents\projects\zed-nick\plugin\zed-runner\run-provider.ps1' -Root 'C:\Users\62453\Documents\projects\ai-manager-server' | ConvertFrom-Json
-$result.entries | Group-Object language | Select-Object Name,Count
-$result.entries | Where-Object { !$_.debug } | Select-Object id
-```
+Git 项目以 git ls-files --cached --others --exclude-standard 为扫描范围；非 Git 项目使用目录扫描并排除生成目录。`.zed/runner-ignore.json` 的 scan_directories、ignore_directories 保持生效；白名单使用根目录相对路径，单个忽略目录名匹配任意层级。入口扫描不安装依赖、不运行项目代码。
 
 ## Spring Boot 开发热更新
 
-在 Java 运行环境中设置 `hot_reload: true`，重新扫描后选择“Java 热更新 · 主类”。项目需提供 `dev-hot-reload` Maven profile：将所有模块的 build.directory 设为 `${project.basedir}/target/dev-hot-reload`，并为启动模块提供 DevTools 依赖。运行器只使用该目录中的 Maven 产物，避免与语言服务后台编译混用。开发环境通过现有 args/env 选择，不使用生产数据库。
+设置 Java 运行环境的 `hot_reload: true`，重新扫描后选择“Java 热更新 · 主类”。项目需提供 dev-hot-reload Maven profile：所有模块的 build.directory 为 `${project.basedir}/target/dev-hot-reload`，启动模块提供 DevTools。原生扫描器调用 scripts/JavaRunner.java，只使用项目必需的 JDK 和 Maven。
 
-运行器保存监听发现变化后调用 Maven，成功才更新 DevTools 触发文件；失败等待修正后再次保存。修改 POM/依赖后重新启动，删除或移动类后先停止并用该 profile clean 再运行。热更新会重建 Spring 上下文，并非零中断。普通运行与调试入口保持原行为。
+保存后自动编译，成功才更新 DevTools 重启触发文件；编译失败时保留进程，修正并保存后重试。监听包含实际依赖模块，即使该模块不在入口扫描白名单内。修改 POM/依赖后重新运行入口；删除、移动类后先停止，再用同一 profile clean 后启动。
 
-Windows 使用系统 PowerShell 5.1 或 7；macOS/Linux 使用 pwsh。所有平台均在各自 java.runtime、java.build_tool 中配置本机 JDK/Maven 绝对路径，不依赖项目内的 PowerShell 脚本。macOS/Linux 仍需要安装 pwsh，不代表无需脚本运行时。
+热更新会重建 Spring 上下文，定时任务、消费者和连接也会重新初始化，期间请求可能短暂中断。仅使用开发环境；Ctrl+C 停止本次启动的进程。
+
+## 验证与可选旧入口
+
+```sh
+python plugin/zed-runner/tests/native_smoke.py
+```
+
+测试使用隔离项目，覆盖真实 Maven/Java 启动、中文与带空格路径、应用参数、DevTools 重启、失败拦截及恢复，并检查 Python 环境和安装布局。GitHub 工作流按 Windows、macOS、Linux 分别运行；编译检查与运行验证分别报告。
+
+原有 run-provider.ps1、scripts/run_java.ps1 等保留为可选的手动入口及旧版本支持，不属于新原生运行链路。运行这些旧入口时才需要对应的 PowerShell 环境。

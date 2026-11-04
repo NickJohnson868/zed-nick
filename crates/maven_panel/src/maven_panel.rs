@@ -544,29 +544,89 @@ impl MavenPanel {
                 .has_running_task_with_tag(module.worktree, TASK_TAG, cx),
             "Maven 任务正在运行；请等待或停止任务"
         );
-        let script = paths::extensions_dir().join("installed/zed-runner/scripts/run_maven.ps1");
+        let read_config = |name: &str| -> Result<serde_json::Value> {
+            let path = module.root.join(name);
+            if !path.is_file() {
+                return Ok(serde_json::Value::Null);
+            }
+            let text = std::fs::read_to_string(path).context("无法读取 Maven 运行配置")?;
+            Ok(serde_json::from_str(text.trim_start_matches('\u{feff}'))
+                .context("Maven 运行配置不是有效 JSON")?)
+        };
+        let config = read_config(".zed/run-environments.json")?;
+        let settings = &config["environments"]["java"];
+        let reactor = module.reactor.parent().context("Reactor 目录无效")?;
+        let mut build_tool = settings["build_tool"]
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| reactor.join(if cfg!(windows) { "mvnw.cmd" } else { "mvnw" }));
+        if build_tool.is_dir() {
+            let names: &[&str] = if cfg!(windows) {
+                &["bin/mvnd.exe", "bin/mvn.cmd", "mvnd.exe", "mvn.cmd"]
+            } else {
+                &["bin/mvnd", "bin/mvn", "mvnd", "mvn"]
+            };
+            if let Some(path) = names
+                .iter()
+                .map(|name| build_tool.join(name))
+                .find(|path| path.is_file())
+            {
+                build_tool = path;
+            }
+        }
+        if !build_tool.is_file()
+            && settings["build_tool"]
+                .as_str()
+                .unwrap_or_default()
+                .is_empty()
+        {
+            let names: &[&str] = if cfg!(windows) {
+                &["mvnd.exe", "mvn.cmd"]
+            } else {
+                &["mvnd", "mvn"]
+            };
+            let directories = std::env::var_os("PATH")
+                .map(|path| std::env::split_paths(&path).collect::<Vec<_>>())
+                .unwrap_or_default();
+            if let Some(path) = names
+                .iter()
+                .flat_map(|name| {
+                    directories
+                        .iter()
+                        .map(move |directory| directory.join(name))
+                })
+                .find(|path| path.is_file())
+            {
+                build_tool = path;
+            }
+        }
         ensure!(
-            script.is_file(),
-            "请更新 zed-runner 插件，缺少 scripts/run_maven.ps1"
+            build_tool.is_absolute() && build_tool.is_file(),
+            "请配置有效的 java.build_tool 或项目 Maven Wrapper"
         );
-        let shell = find_powershell();
-        let quote = |value: &str| format!("'{}'", value.replace('\'', "''"));
-        let mut arguments = vec![
-            "-NoLogo".into(),
-            "-NoProfile".into(),
-            "-ExecutionPolicy".into(),
-            "Bypass".into(),
-            "-File".into(),
-            script.to_string_lossy().into_owned(),
-            "-Root".into(),
-            module.root.to_string_lossy().into_owned(),
-            "-Pom".into(),
-            module.path.to_string_lossy().into_owned(),
-            "-ReactorPom".into(),
-            module.reactor.to_string_lossy().into_owned(),
-            "-Goals".into(),
-            goal.into(),
-        ];
+        ensure!(
+            module.path.starts_with(&module.root) && module.reactor.starts_with(&module.root),
+            "只能运行当前项目的 Maven 模块"
+        );
+        let mut arguments = vec!["-f".to_string()];
+        if self.options.also_make && module.path != module.reactor {
+            let relative = module
+                .path
+                .parent()
+                .context("模块目录无效")?
+                .strip_prefix(reactor)
+                .context("模块不在 Reactor 内")?;
+            arguments.extend([
+                module.reactor.to_string_lossy().into_owned(),
+                "-pl".into(),
+                relative.to_string_lossy().replace('\\', "/"),
+                "-am".into(),
+            ]);
+        } else {
+            arguments.push(module.path.to_string_lossy().into_owned());
+        }
+        arguments.push("-B".into());
         let prefix = format!("{}#", module.reactor.display());
         let profiles: Vec<_> = self
             .options
@@ -580,39 +640,114 @@ impl MavenPanel {
             }))
             .collect();
         if !profiles.is_empty() {
-            arguments.extend(["-Profiles".into(), profiles.join(",")]);
+            arguments.extend(["-P".into(), profiles.join(",")]);
         }
         if self.options.skip_tests {
-            arguments.push("-SkipTests".into());
+            arguments.push("-DskipTests".into());
         }
         if self.options.offline {
-            arguments.push("-Offline".into());
+            arguments.push("-o".into());
         }
-        if self.options.also_make {
-            arguments.push("-AlsoMake".into());
+        for goal in goal.split(',').filter(|goal| !goal.is_empty()) {
+            ensure!(
+                (!goal.starts_with('-')
+                    && goal
+                        .chars()
+                        .all(|character| character.is_ascii_alphanumeric()
+                            || "_.:-".contains(character)))
+                    || goal == "-Ddetail"
+                    || goal
+                        .strip_prefix("-Dplugin=")
+                        .is_some_and(|value| !value.is_empty()
+                            && value
+                                .chars()
+                                .all(|character| character.is_ascii_alphanumeric()
+                                    || "_.:-".contains(character))),
+                "Maven 目标无效"
+            );
+            arguments.push(goal.into());
         }
-        let mut arguments: Vec<_> = arguments.iter().map(|argument| quote(argument)).collect();
-        arguments.push("; exit $LASTEXITCODE".into());
-        let template = TaskTemplate {
+        let kind = if cfg!(windows) {
+            task::ShellKind::Cmd
+        } else {
+            task::ShellKind::Posix
+        };
+        let quote = |value: &str| {
+            kind.try_quote(value)
+                .map(|value| value.into_owned())
+                .context("Maven 参数无法由系统 Shell 表达")
+        };
+        let mut template = TaskTemplate {
             label: format!("Maven · {} · {goal}", module.pom.name),
-            command: format!("& {}", quote(&shell)),
-            args: arguments,
-            cwd: Some(module.root.to_string_lossy().into_owned()),
+            command: quote(&build_tool.to_string_lossy())?,
+            args: arguments
+                .iter()
+                .map(|argument| quote(argument))
+                .collect::<Result<Vec<_>>>()?,
+            cwd: Some(reactor.to_string_lossy().into_owned()),
             tags: vec![TASK_TAG.into()],
-            shell: task::Shell::WithArguments {
-                program: shell,
-                args: vec![
-                    "-NoLogo".into(),
-                    "-NoProfile".into(),
-                    "-ExecutionPolicy".into(),
-                    "Bypass".into(),
-                ],
-                title_override: None,
-            },
+            shell: task::Shell::Program(if cfg!(windows) {
+                std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".into())
+            } else {
+                "/bin/sh".into()
+            }),
+            show_command: false,
             allow_concurrent_runs: false,
             use_new_terminal: false,
             ..Default::default()
         };
+        let private = read_config(".zed/run-config.json")?;
+        for variables in [private["env"].as_object(), settings["env"].as_object()]
+            .into_iter()
+            .flatten()
+        {
+            for (key, value) in variables {
+                let value = match value {
+                    serde_json::Value::String(value) => value.clone(),
+                    serde_json::Value::Number(_) | serde_json::Value::Bool(_) => value.to_string(),
+                    serde_json::Value::Null => String::new(),
+                    _ => anyhow::bail!("Maven 环境变量 {key} 必须为字符串或标量"),
+                };
+                template.env.insert(key.clone(), value);
+            }
+        }
+        if let Some(java_home) = settings["runtime"]
+            .as_str()
+            .filter(|value| !value.is_empty())
+        {
+            let java_home = PathBuf::from(java_home);
+            ensure!(
+                java_home.is_absolute()
+                    && java_home
+                        .join(if cfg!(windows) {
+                            "bin/java.exe"
+                        } else {
+                            "bin/java"
+                        })
+                        .is_file(),
+                "java.runtime 必须指向有效 JDK"
+            );
+            template
+                .env
+                .insert("JAVA_HOME".into(), java_home.to_string_lossy().into_owned());
+            let path_key = template
+                .env
+                .keys()
+                .find(|key| key.eq_ignore_ascii_case("PATH"))
+                .cloned()
+                .unwrap_or_else(|| "PATH".into());
+            let original = template
+                .env
+                .get(&path_key)
+                .cloned()
+                .unwrap_or_else(|| std::env::var("PATH").unwrap_or_default());
+            let joined = std::env::join_paths(
+                std::iter::once(java_home.join("bin")).chain(std::env::split_paths(&original)),
+            )?;
+            template
+                .env
+                .insert(path_key, joined.to_string_lossy().into_owned());
+        }
         Ok((
             template,
             TaskContext {
@@ -639,48 +774,6 @@ impl MavenPanel {
                 .detach_and_log_err(cx);
         }
     }
-}
-
-fn find_powershell() -> String {
-    if cfg!(windows) {
-        if let Some(path) = std::env::var_os("PATH") {
-            let directories: Vec<_> = std::env::split_paths(&path).collect();
-            for name in ["powershell.exe", "pwsh.exe"] {
-                if let Some(candidate) = directories
-                    .iter()
-                    .map(|directory| directory.join(name))
-                    .find(|candidate| candidate.is_file())
-                {
-                    return candidate.to_string_lossy().into_owned();
-                }
-            }
-        }
-        return std::env::var_os("SystemRoot")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows"))
-            .join(r"System32\WindowsPowerShell\v1.0\powershell.exe")
-            .to_string_lossy()
-            .into_owned();
-    }
-    let name = if cfg!(windows) { "pwsh.exe" } else { "pwsh" };
-    if let Some(path) = std::env::var_os("PATH") {
-        for directory in std::env::split_paths(&path) {
-            let candidate = directory.join(name);
-            if candidate.is_file() {
-                return candidate.to_string_lossy().into_owned();
-            }
-        }
-    }
-    for path in [
-        "/opt/homebrew/bin/pwsh",
-        "/usr/local/bin/pwsh",
-        "/usr/bin/pwsh",
-    ] {
-        if std::path::Path::new(path).is_file() {
-            return path.into();
-        }
-    }
-    name.into()
 }
 
 impl Focusable for MavenPanel {

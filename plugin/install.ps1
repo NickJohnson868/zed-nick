@@ -60,6 +60,17 @@ try {
     New-Item -ItemType Directory -Path (Join-Path $stage 'java') -Force | Out-Null
     & tar -xzf "$buildDirectory/java/archive.tar.gz" -C (Join-Path $stage 'java')
     if ($LASTEXITCODE -ne 0) { throw 'Java 扩展包解压失败' }
+    $javaTasks = Get-Content -LiteralPath "$PSScriptRoot/zed-java-fork/languages/java/tasks.json" -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($IsWindows) {
+        $common = [IO.File]::ReadAllText("$PSScriptRoot/zed-java-fork/scripts/java_task_windows.ps1")
+        $modes = @('main','method','class','all','cache')
+        for ($index=0; $index -lt $javaTasks.Count; $index++) {
+            $javaTasks[$index].command = $common+"`ntry { Invoke-JavaTask '"+$modes[$index]+"'; exit 0 } catch { [Console]::Error.WriteLine(`$_.Exception.Message); exit 1 }"
+            $javaTasks[$index].shell = @{with_arguments=@{program='powershell.exe';args=@('-NoLogo','-NoProfile','-NonInteractive')}}
+            $javaTasks[$index] | Add-Member -NotePropertyName show_command -NotePropertyValue $false -Force
+        }
+    }
+    [IO.File]::WriteAllText((Join-Path $stage 'java/languages/java/tasks.json'), (ConvertTo-Json -InputObject @($javaTasks) -Depth 12), [Text.UTF8Encoding]::new($false))
     $runner = Join-Path $stage 'zed-runner'
     New-Item -ItemType Directory -Path $runner -Force | Out-Null
     foreach ($name in @('extension.toml','run-provider.ps1','config-template.ps1','run-environments.template.json','scripts')) {
