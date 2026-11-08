@@ -178,7 +178,15 @@ try {
     } else {
         New-Item -ItemType Directory -Path $profile -Force | Out-Null
     }
-    & "$PSScriptRoot/plugin/install.ps1" -ExtensionsDirectory (Join-Path $profile 'extensions') -BuildDirectory $PluginBuildDirectory -SkipBuild:$SkipPluginBuild
+    $python = Get-Command python -ErrorAction SilentlyContinue
+    if ($python) {
+        $pluginArguments = @("$PSScriptRoot/plugin/install.py", '--extensions-directory', (Join-Path $profile 'extensions'), '--build-directory', $PluginBuildDirectory)
+        if ($SkipPluginBuild) { $pluginArguments += '--skip-build' }
+        & $python.Source @pluginArguments
+        if ($LASTEXITCODE) { throw '插件构建或安装失败。' }
+    } else {
+        & "$PSScriptRoot/plugin/install.ps1" -ExtensionsDirectory (Join-Path $profile 'extensions') -BuildDirectory $PluginBuildDirectory -SkipBuild:$SkipPluginBuild
+    }
     @'
 直接双击本目录的 Zed.exe，不需要 CMD、PowerShell 启动器或安装。
 portable-data 内预装插件，首次启动后将配置和数据保存在程序旁边。

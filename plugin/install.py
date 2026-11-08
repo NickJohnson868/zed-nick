@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import tomllib
 import urllib.request
 
 HERE = Path(__file__).resolve().parent
@@ -89,6 +90,48 @@ def java_tasks(destination, windows=None):
     (directory / "tasks.json").write_text(json.dumps(tasks, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def rebuild_java_with_cached_grammars(build, environment):
+    archive = build / "java/archive.tar.gz"
+    if not archive.is_file():
+        return False
+    source = HERE / "zed-java-fork"
+    manifest = tomllib.loads((source / "extension.toml").read_text(encoding="utf-8"))
+    with tempfile.TemporaryDirectory(dir=build) as temporary:
+        cached = Path(temporary) / "cached"
+        cached.mkdir()
+        extract(archive, cached)
+        previous = tomllib.loads((cached / "extension.toml").read_text(encoding="utf-8"))
+        if previous.get("grammars") != manifest.get("grammars"):
+            return False
+        grammars = {}
+        for name in manifest["grammars"]:
+            path = cached / "grammars" / (name + ".wasm")
+            if not path.is_file() or path.read_bytes()[:4] != b"\0asm":
+                return False
+            grammars[name] = path
+        run("cargo", "build", "--locked", "--release", "--target", "wasm32-wasip2",
+            "--manifest-path", source / "Cargo.toml", "-p", "zed_java", env=environment)
+        wasm = Path(environment["CARGO_TARGET_DIR"]) / "wasm32-wasip2/release/zed_java.wasm"
+        if wasm.read_bytes()[:4] != b"\0asm" or b"zed:api-version" not in wasm.read_bytes():
+            raise ValueError("Java extension is missing its WASM API version")
+        stage = Path(temporary) / "runtime"
+        (stage / "grammars").mkdir(parents=True)
+        for name, path in grammars.items():
+            shutil.copy2(path, stage / "grammars" / (name + ".wasm"))
+        for name in ["languages", "debug_adapter_schemas", "language_server_schemas", "snippets", "themes", "icons", "resources"]:
+            if (source / name).is_dir():
+                shutil.copytree(source / name, stage / name, ignore=shutil.ignore_patterns("__pycache__"))
+        for name in ["extension.toml", "LICENSE"]:
+            shutil.copy2(source / name, stage / name)
+        shutil.copy2(wasm, stage / "extension.wasm")
+        replacement = Path(temporary) / "archive.tar.gz"
+        with tarfile.open(replacement, "w:gz") as package:
+            package.add(stage, arcname=".")
+        os.replace(replacement, archive)
+    print("Rebuilt Java extension with unchanged pinned grammar binaries")
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--extensions-directory", type=Path, required=True)
@@ -111,12 +154,13 @@ def main():
     builder = options.extension_builder or target / host / "release" / ("zed-extension" + suffix)
     if not options.skip_build:
         run("rustup", "target", "add", "wasm32-wasip2")
-        if not builder.is_file():
-            run("cargo", "build", "--locked", "--release", "--target", host, "-p", "extension_cli", "--bin", "zed-extension", env=environment)
         run("cargo", "build", "--locked", "--release", "--target", host, "--manifest-path", HERE / "zed-java-fork/Cargo.toml", "-p", "java-lsp-proxy", "-p", "gradle-lsp-bridge", env=environment)
         run("cargo", "build", "--locked", "--release", "--target", host, "--manifest-path", HERE / "zed-mybatis-jump/Cargo.toml", "-p", "mybatis-jump-lsp", env=environment)
         run("cargo", "build", "--locked", "--release", "--target", "wasm32-wasip2", "--manifest-path", HERE / "zed-mybatis-jump/Cargo.toml", "-p", "zed-mybatis-jump", env=environment)
-        run(builder, "--source-dir", HERE / "zed-java-fork", "--output-dir", build / "java", "--scratch-dir", build / "scratch", env=environment)
+        if not rebuild_java_with_cached_grammars(build, environment):
+            if not builder.is_file():
+                run("cargo", "build", "--locked", "--release", "--target", host, "-p", "extension_cli", "--bin", "zed-extension", env=environment)
+            run(builder, "--source-dir", HERE / "zed-java-fork", "--output-dir", build / "java", "--scratch-dir", build / "scratch", env=environment)
     binaries = [("java", "java-lsp-proxy"), ("java", "gradle-lsp-bridge"), ("mybatis-jump", "mybatis-jump-lsp")]
     archive = build / "java/archive.tar.gz"
     wasm = target / "wasm32-wasip2/release/zed_mybatis_jump.wasm"

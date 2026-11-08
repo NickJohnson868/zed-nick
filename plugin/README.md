@@ -10,6 +10,9 @@ version, official download URL and archive SHA-256. Their source is not vendored
 `install.ps1` remains an optional Windows installer. Use `--skip-community`
 only for isolated tests or when explicitly installing personal plugins alone.
 Downloaded packages and compiler outputs stay in the ignored `.local-plugin-build`.
+The Python installer reuses grammar WASM only when its pinned repositories and
+commits match the current manifest. It still compiles the current Java extension
+and copies the current language queries, so fixes are not replaced by old cache contents.
 The Windows portable builder includes these plugin runtimes automatically; it
 never copies a user's settings, accounts or language-server caches into the ZIP.
 Debian amd64 packages built by `python3 script/build-deb.py --output ZedNick-amd64.deb`
