@@ -200,6 +200,12 @@ fn native_java_entries(root: &Path, provider: &Path) -> Result<Vec<RunEntry>> {
             maven = candidate;
         }
     }
+    if !maven.is_file() {
+        let wrapper = root.join(if cfg!(windows) { "mvnw.cmd" } else { "mvnw" });
+        if wrapper.is_file() {
+            maven = wrapper;
+        }
+    }
     let mut environment = serde_json::Map::new();
     let private = read_run_config(&root.join(".zed/run-config.json"))?;
     for variables in [&private["env"], &settings["env"]] {
