@@ -575,12 +575,13 @@ impl MavenPanel {
                 build_tool = path;
             }
         }
-        if !build_tool.is_file()
-            && settings["build_tool"]
-                .as_str()
-                .unwrap_or_default()
-                .is_empty()
-        {
+        if !build_tool.is_file() {
+            let wrapper = reactor.join(if cfg!(windows) { "mvnw.cmd" } else { "mvnw" });
+            if wrapper.is_file() {
+                build_tool = wrapper;
+            }
+        }
+        if !build_tool.is_file() {
             let names: &[&str] = if cfg!(windows) {
                 &["mvnd.exe", "mvn.cmd"]
             } else {
@@ -713,20 +714,18 @@ impl MavenPanel {
         }
         if let Some(java_home) = settings["runtime"]
             .as_str()
-            .filter(|value| !value.is_empty())
-        {
-            let java_home = PathBuf::from(java_home);
-            ensure!(
-                java_home.is_absolute()
-                    && java_home
+            .map(PathBuf::from)
+            .filter(|path| {
+                path.is_absolute()
+                    && path
                         .join(if cfg!(windows) {
                             "bin/java.exe"
                         } else {
                             "bin/java"
                         })
-                        .is_file(),
-                "java.runtime 必须指向有效 JDK"
-            );
+                        .is_file()
+            })
+        {
             template
                 .env
                 .insert("JAVA_HOME".into(), java_home.to_string_lossy().into_owned());

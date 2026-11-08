@@ -170,7 +170,7 @@ fn java_source_files(directory: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
 
 fn native_java_entries(root: &Path, provider: &Path) -> Result<Vec<RunEntry>> {
     let helper = provider.join("scripts/JavaRunner.java");
-    let config = read_run_config(&root.join(CONFIG_PATH))?;
+    let config = native_run_config(root)?;
     let settings = &config["environments"]["java"];
     if settings["runtime"].as_str().unwrap_or_default().is_empty() || !helper.is_file() {
         return Ok(Vec::new());
@@ -481,6 +481,14 @@ fn tool_on_path(names: &[&str]) -> Option<PathBuf> {
 fn native_template() -> Result<String> {
     let java = std::env::var_os("JAVA_HOME")
         .map(PathBuf::from)
+        .filter(|path| {
+            path.join(if cfg!(windows) {
+                "bin/java.exe"
+            } else {
+                "bin/java"
+            })
+            .is_file()
+        })
         .or_else(|| {
             if cfg!(target_os = "macos") {
                 let output = util::command::new_std_command("/usr/libexec/java_home")
@@ -517,6 +525,55 @@ fn native_template() -> Result<String> {
         "javascript": {"runtime": tool(&["npm.cmd", "npm.exe"], &["npm"]), "env": {}}
     }, "entries": []}),
     )?)
+}
+
+fn native_run_config(root: &Path) -> Result<serde_json::Value> {
+    let mut config = read_run_config(&root.join(CONFIG_PATH))?;
+    let detected: serde_json::Value = serde_json::from_str(&native_template()?)?;
+    if config.is_null() {
+        return Ok(detected);
+    }
+    ensure!(config.is_object(), "运行环境配置必须是 JSON 对象");
+    ensure!(
+        config["environments"].is_null() || config["environments"].is_object(),
+        "environments 必须是 JSON 对象"
+    );
+    for (language, keys) in [
+        ("java", &["runtime", "build_tool"][..]),
+        ("python", &["runtime", "uv"][..]),
+        ("go", &["runtime"][..]),
+        ("javascript", &["runtime"][..]),
+    ] {
+        ensure!(
+            config["environments"][language].is_null()
+                || config["environments"][language].is_object(),
+            "{language} 运行环境必须是 JSON 对象"
+        );
+        for key in keys {
+            let configured = &config["environments"][language][key];
+            let valid = configured.as_str().is_some_and(|value| {
+                let path = Path::new(value);
+                path.is_absolute()
+                    && if language == "java" && *key == "runtime" {
+                        path.join(if cfg!(windows) {
+                            "bin/java.exe"
+                        } else {
+                            "bin/java"
+                        })
+                        .is_file()
+                    } else if language == "java" && *key == "build_tool" {
+                        path.is_file() || path.is_dir()
+                    } else {
+                        path.is_file()
+                    }
+            });
+            if !valid {
+                config["environments"][language][key] =
+                    detected["environments"][language][key].clone();
+            }
+        }
+    }
+    Ok(config)
 }
 
 fn native_runtime(settings: &serde_json::Value, key: &str) -> Result<Option<PathBuf>> {
@@ -564,7 +621,7 @@ fn collect_source_files(directory: &Path, files: &mut Vec<PathBuf>) -> Result<()
 }
 
 fn native_other_entries(root: &Path, provider: &Path) -> Result<Vec<RunEntry>> {
-    let config = read_run_config(&root.join(CONFIG_PATH))?;
+    let config = native_run_config(root)?;
     let scan = read_run_config(&root.join(".zed/runner-ignore.json"))?;
     let python_settings = &config["environments"]["python"];
     let python = native_runtime(python_settings, "runtime")?;
@@ -901,6 +958,34 @@ pub async fn discover(root: &Path) -> Result<Discovery> {
     }
     for provider in providers {
         if provider.join("scripts/JavaRunner.java").is_file() {
+            let config = native_run_config(root)?;
+            for (language, marker, message) in [
+                (
+                    "java",
+                    "pom.xml",
+                    "未检测到 JDK；请安装 JDK 或配置 JAVA_HOME",
+                ),
+                ("go", "go.mod", "未检测到 Go；请安装 Go 并加入 PATH"),
+                (
+                    "python",
+                    "pyproject.toml",
+                    "未检测到 Python；请安装 Python 或选择项目虚拟环境",
+                ),
+                (
+                    "javascript",
+                    "package.json",
+                    "未检测到 npm；请安装 Node.js 并加入 PATH",
+                ),
+            ] {
+                if root.join(marker).is_file()
+                    && config["environments"][language]["runtime"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .is_empty()
+                {
+                    discovery.warnings.push(message.into());
+                }
+            }
             discovery
                 .entries
                 .extend(native_java_entries(root, &provider)?);
@@ -1126,6 +1211,58 @@ mod native_tests {
             "fixture cleanup must stay in temporary directory"
         );
         fs::remove_dir_all(fixture)?;
+        Ok(())
+    }
+
+    #[test]
+    fn automatic_runtime_detection_handles_moved_projects() -> Result<()> {
+        let temporary = std::env::temp_dir();
+        let root_path = temporary.join(format!(
+            "zed-runtime-detection-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_nanos()
+        ));
+        let root = root_path.as_path();
+        let detected: serde_json::Value = serde_json::from_str(&native_template()?)?;
+        assert_eq!(native_run_config(root)?, detected);
+        write(
+            &root.join(CONFIG_PATH),
+            r#"{"environments":{"java":{"runtime":"C:/missing-jdk","env":{"KEEP":"yes"}},"python":{"runtime":"/missing/python"}},"entries":[{"id":"custom"}]}"#,
+        )?;
+        let config = native_run_config(root)?;
+        assert_eq!(
+            config["environments"]["java"]["runtime"],
+            detected["environments"]["java"]["runtime"]
+        );
+        assert_eq!(
+            config["environments"]["python"]["runtime"],
+            detected["environments"]["python"]["runtime"]
+        );
+        assert_eq!(config["environments"]["java"]["env"]["KEEP"], "yes");
+        assert_eq!(config["entries"][0]["id"], "custom");
+        let executable = root.join("custom-python");
+        write(&executable, "fixture")?;
+        let custom = serde_json::json!({"environments":{"python":{"runtime":executable}}});
+        write(&root.join(CONFIG_PATH), &serde_json::to_string(&custom)?)?;
+        assert_eq!(
+            native_run_config(root)?["environments"]["python"]["runtime"],
+            custom["environments"]["python"]["runtime"]
+        );
+        for invalid in [
+            "[]",
+            r#"{"environments":false}"#,
+            r#"{"environments":{"java":false}}"#,
+        ] {
+            write(&root.join(CONFIG_PATH), invalid)?;
+            assert!(native_run_config(root).is_err());
+        }
+        ensure!(
+            root.starts_with(&temporary),
+            "fixture must stay in temporary directory"
+        );
+        fs::remove_dir_all(root)?;
         Ok(())
     }
 }

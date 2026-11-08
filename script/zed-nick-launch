@@ -1,0 +1,46 @@
+#!/bin/sh
+set -eu
+
+root=${ZED_NICK_INSTALL_ROOT:-/usr/lib/zed-nick}
+data=${XDG_DATA_HOME:-"$HOME/.local/share"}/zed
+next_is_data=false
+for argument in "$@"; do
+    if "$next_is_data"; then
+        data=$argument
+        next_is_data=false
+    else
+        case "$argument" in
+            --user-data-dir) next_is_data=true ;;
+            --user-data-dir=*) data=${argument#*=} ;;
+        esac
+    fi
+done
+if "$next_is_data"; then
+    echo 'Missing --user-data-dir value' >&2
+    exit 2
+fi
+
+extensions=$data/extensions
+bundle=$root/extensions
+mkdir -p "$extensions"
+(
+    flock -x 9
+    version=$(cat "$bundle/.bundle-version")
+    installed=$(cat "$extensions/.zed-nick-bundle" 2>/dev/null || true)
+    if [ "$version" != "$installed" ]; then
+        for identifier in java mybatis-jump zed-runner html sql xml; do
+            for relative in "installed/$identifier" "work/$identifier"; do
+                target=$extensions/$relative
+                if [ -L "$target" ] || { [ -d "$target" ] && [ -n "$(find "$target" -type l -print -quit)" ]; }; then
+                    echo "Preserving linked plugin: $target" >&2
+                    exit 1
+                fi
+            done
+        done
+        cp -Rp "$bundle/installed" "$extensions/"
+        cp -Rp "$bundle/work" "$extensions/"
+        printf '%s\n' "$version" > "$extensions/.zed-nick-bundle"
+    fi
+) 9>"$extensions/.zed-nick-install.lock"
+
+exec "$root/libexec/zed-editor" "$@"

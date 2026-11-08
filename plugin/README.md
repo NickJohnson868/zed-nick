@@ -12,12 +12,19 @@ only for isolated tests or when explicitly installing personal plugins alone.
 Downloaded packages and compiler outputs stay in the ignored `.local-plugin-build`.
 The Windows portable builder includes these plugin runtimes automatically; it
 never copies a user's settings, accounts or language-server caches into the ZIP.
+Debian amd64 packages built by `python3 script/build-deb.py --output ZedNick-amd64.deb`
+also include all six plugins. The `zed-nick` launcher installs the bundled plugins
+into the current user's extension directory on first launch and after package
+upgrades. It respects `--user-data-dir` and preserves development links.
+Building requires Python and the Linux build dependencies; installed users do not
+need Python or PowerShell for plugin installation or the editor's native runner.
 
 The native app discovers and launches Java, Python, Go and npm entries without
 PowerShell on Windows, macOS and Linux. The Maven panel also calls Maven directly.
 Java workflows reuse the configured JDK and Maven; Python workflows reuse their
 configured Python or uv. The generated environment template discovers tools on
-that machine; do not copy Windows executable paths into a Mac configuration.
+that machine. Missing or invalid runtime paths are detected again when scanning
+a project, so a Windows-only configuration can fall back to Linux or macOS tools.
 Java needs a JDK, Maven projects need Maven/MVND, and Python projects use their
 configured interpreter or virtual environment. Existing scan whitelists,
 Git ignores, project trust and path checks remain in effect.
