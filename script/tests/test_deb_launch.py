@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import tempfile
 import unittest
 
@@ -19,7 +20,7 @@ class DebianLauncherTest(unittest.TestCase):
                 path.mkdir(parents=True)
                 (path / "extension.toml").write_text(identifier)
             (bundle / "work/java/bin").mkdir(parents=True)
-            (bundle / "work/java/bin/java-lsp-proxy").write_text("native")
+            shutil.copy2("/bin/sleep", bundle / "work/java/bin/java-lsp-proxy")
             (bundle / ".bundle-version").write_text("first")
             executable = installation / "libexec/zed-editor"
             executable.parent.mkdir()
@@ -40,6 +41,13 @@ class DebianLauncherTest(unittest.TestCase):
             (bundle / ".bundle-version").write_text("second")
             subprocess.run(["sh", LAUNCHER], env=environment, check=True)
             self.assertEqual(java.read_text(), "java")
+            native_process = subprocess.Popen([extensions / "work/java/bin/java-lsp-proxy", "2"])
+            try:
+                (bundle / ".bundle-version").write_text("third")
+                subprocess.run(["sh", LAUNCHER], env=environment, check=True)
+                self.assertIsNone(native_process.poll())
+            finally:
+                native_process.wait(timeout=5)
             custom = root / "custom profile"
             subprocess.run(["sh", LAUNCHER, "--user-data-dir", custom], env=environment, check=True)
             self.assertTrue((custom / "extensions/installed/java/extension.toml").is_file())

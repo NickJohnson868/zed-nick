@@ -44,8 +44,8 @@ mkdir -p "$extensions"
                 fi
             done
         done
-        cp -Rp "$bundle/installed" "$extensions/"
-        cp -Rp "$bundle/work" "$extensions/"
+        cp -Rp --remove-destination "$bundle/installed" "$extensions/"
+        cp -Rp --remove-destination "$bundle/work" "$extensions/"
         printf '%s\n' "$version" > "$extensions/.zed-nick-bundle"
     fi
 ) 9>"$extensions/.zed-nick-install.lock"
