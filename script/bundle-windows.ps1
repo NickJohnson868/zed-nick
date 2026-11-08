@@ -269,8 +269,8 @@ function BuildInstaller {
         "stable" {
             $appId = "{{2DB0DA96-CA55-49BB-AF4F-64AF36A86712}"
             $appIconName = "app-icon"
-            $appName = "ZedNick"
-            $appDisplayName = "ZedNick"
+            $appName = "Zed Nick"
+            $appDisplayName = "Zed Nick"
             $appSetupName = "ZedNick-$Architecture"
             # The mutex name here should match the mutex name in crates\zed\src\zed\windows_only_instance.rs
             $appMutex = "Zed-Stable-Instance-Mutex"
@@ -283,8 +283,8 @@ function BuildInstaller {
         "preview" {
             $appId = "{{F70E4811-D0E2-4D88-AC99-D63752799F95}"
             $appIconName = "app-icon-preview"
-            $appName = "ZedNick Preview"
-            $appDisplayName = "ZedNick Preview"
+            $appName = "Zed Nick"
+            $appDisplayName = "Zed Nick"
             $appSetupName = "ZedNick-$Architecture"
             # The mutex name here should match the mutex name in crates\zed\src\zed\windows_only_instance.rs
             $appMutex = "Zed-Preview-Instance-Mutex"
@@ -297,8 +297,8 @@ function BuildInstaller {
         "nightly" {
             $appId = "{{1BDB21D3-14E7-433C-843C-9C97382B2FE0}"
             $appIconName = "app-icon-nightly"
-            $appName = "ZedNick Nightly"
-            $appDisplayName = "ZedNick Nightly"
+            $appName = "Zed Nick"
+            $appDisplayName = "Zed Nick"
             $appSetupName = "ZedNick-$Architecture"
             # The mutex name here should match the mutex name in crates\zed\src\zed\windows_only_instance.rs
             $appMutex = "Zed-Nightly-Instance-Mutex"
@@ -311,8 +311,8 @@ function BuildInstaller {
         "dev" {
             $appId = "{{8357632E-24A4-4F32-BA97-E575B4D1FE5D}"
             $appIconName = "app-icon-dev"
-            $appName = "ZedNick Dev"
-            $appDisplayName = "ZedNick Dev"
+            $appName = "Zed Nick"
+            $appDisplayName = "Zed Nick"
             $appSetupName = "ZedNick-$Architecture"
             # The mutex name here should match the mutex name in crates\zed\src\zed\windows_only_instance.rs
             $appMutex = "Zed-Dev-Instance-Mutex"

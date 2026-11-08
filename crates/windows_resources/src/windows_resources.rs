@@ -44,10 +44,10 @@ const MANIFEST_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/resources/mani
 pub fn compile(manifest: bool) -> Result<(), Box<dyn std::error::Error>> {
     let channel = option_env!("RELEASE_CHANNEL").unwrap_or("dev");
     let (icon_filename, product_name) = match channel {
-        "stable" => ("app-icon.ico", "ZedNick"),
-        "preview" => ("app-icon-preview.ico", "ZedNick Preview"),
-        "nightly" => ("app-icon-nightly.ico", "ZedNick Nightly"),
-        _ => ("app-icon-dev.ico", "ZedNick Dev"),
+        "stable" => ("app-icon.ico", "Zed Nick"),
+        "preview" => ("app-icon-preview.ico", "Zed Nick"),
+        "nightly" => ("app-icon-nightly.ico", "Zed Nick"),
+        _ => ("app-icon-dev.ico", "Zed Nick"),
     };
     let icon = std::path::PathBuf::from(ICON_DIR).join(icon_filename);
     let icon_escaped = icon.to_string_lossy().replace('\\', "\\\\");
