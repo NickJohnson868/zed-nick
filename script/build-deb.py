@@ -95,7 +95,10 @@ def main():
             ["dpkg-shlibdeps", "-O", "--ignore-missing-info", *["-e" + str(path) for path in native_binaries]],
             cwd=stage, text=True).strip().removeprefix("shlibs:Depends=")
         (stage / "DEBIAN").mkdir()
-        (stage / "DEBIAN/control").write_text(control + "Depends: " + dependencies + ", util-linux, ca-certificates, git\n")
+        (stage / "DEBIAN/control").write_text(
+            control + "Depends: " + dependencies
+            + ", util-linux, ca-certificates, git, libvulkan1, libegl1, libxkbcommon0, libxkbcommon-x11-0, libxcb1, libwayland-client0\n"
+            + "Recommends: mesa-vulkan-drivers, xdg-desktop-portal\n")
         shutil.rmtree(stage / "debian")
         output = options.output.resolve()
         output.parent.mkdir(parents=True, exist_ok=True)
