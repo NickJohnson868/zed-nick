@@ -44,6 +44,7 @@ def main():
     cache.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="package-", dir=cache) as temporary:
         stage = Path(temporary)
+        stage.chmod(0o755)
         application = stage / "usr/lib/zed-nick"
         (application / "libexec").mkdir(parents=True)
         for source, destination in [("zed", "zed-editor"), ("cli", "cli")]:
