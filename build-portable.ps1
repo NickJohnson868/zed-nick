@@ -195,13 +195,18 @@ portable-data 内预装插件，首次启动后将配置和数据保存在程序
     if (Test-Path -LiteralPath (Join-Path $outputPath 'arm64\OpenConsole.exe') -PathType Leaf) {
         $files += 'arm64\OpenConsole.exe'
     }
-    foreach ($directory in @('installed/java','installed/mybatis-jump','installed/zed-runner','installed/html','installed/sql','installed/xml','work/java/bin','work/mybatis-jump/bin')) {
+    $pluginIds = @('java', 'mybatis-jump', 'zed-runner') + @(
+        (Get-Content -LiteralPath "$PSScriptRoot/plugin/community.json" -Raw -Encoding UTF8 | ConvertFrom-Json).extensions |
+            ForEach-Object { $_.id }
+    )
+    $pluginDirectories = @($pluginIds | ForEach-Object { "installed/$_" }) + @('work/java/bin', 'work/mybatis-jump/bin')
+    foreach ($directory in $pluginDirectories) {
         $directoryPath = Join-Path $profile "extensions/$directory"
         foreach ($file in Get-ChildItem -LiteralPath $directoryPath -File -Recurse) {
             $files += [IO.Path]::GetRelativePath($outputPath, $file.FullName)
         }
     }
-    $plugins = foreach ($id in @('java','mybatis-jump','zed-runner','html','sql','xml')) {
+    $plugins = foreach ($id in $pluginIds) {
         $metadata = Get-Content -LiteralPath (Join-Path $profile "extensions/installed/$id/extension.toml") -Raw
         if ($metadata -notmatch '(?m)^version\s*=\s*"([^"]+)"') { throw "插件缺少版本：$id" }
         @{ id=$id; version=$Matches[1] }

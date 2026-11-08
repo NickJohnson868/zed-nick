@@ -102,7 +102,7 @@ def main():
         shutil.rmtree(stage / "debian")
         output = options.output.resolve()
         output.parent.mkdir(parents=True, exist_ok=True)
-        run("dpkg-deb", "--build", "--root-owner-group", "-Zxz", "-z6", stage, output)
+        run("dpkg-deb", "--build", "--root-owner-group", "--threads-max=2", "-Zxz", "-z6", stage, output)
         print(f"Debian amd64 package: {output}")
         print(f"SHA256: {hashlib.sha256(output.read_bytes()).hexdigest()}")
 

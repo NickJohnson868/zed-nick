@@ -34,7 +34,8 @@ mkdir -p "$extensions"
                 exit 1
             fi
         done
-        for identifier in java mybatis-jump zed-runner html sql xml; do
+        for source in "$bundle"/installed/*; do
+            identifier=${source##*/}
             for relative in "installed/$identifier" "work/$identifier"; do
                 target=$extensions/$relative
                 if [ -L "$target" ] || { [ -d "$target" ] && [ -n "$(find "$target" -type l -print -quit)" ]; }; then

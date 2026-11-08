@@ -18,6 +18,8 @@ into the current user's extension directory on first launch and after package
 upgrades. It respects `--user-data-dir` and preserves development links.
 Building requires Python and the Linux build dependencies; installed users do not
 need Python or PowerShell for plugin installation or the editor's native runner.
+Community plugins added to `community.json` are included automatically in both
+the Windows ZIP and the Debian package.
 
 The native app discovers and launches Java, Python, Go and npm entries without
 PowerShell on Windows, macOS and Linux. The Maven panel also calls Maven directly.
