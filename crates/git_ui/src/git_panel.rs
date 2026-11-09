@@ -8216,6 +8216,10 @@ impl GitPanel {
     }
 
     fn preload_commit_history(&mut self, cx: &mut Context<Self>) {
+        if !self.project.read(cx).is_local() {
+            return;
+        }
+
         let Some(active_repository) = self.active_repository.as_ref() else {
             return;
         };
@@ -9568,7 +9572,13 @@ impl GitPanel {
             .bg(base_bg)
             .hover(|s| s.bg(hover_bg))
             .active(|s| s.bg(active_bg))
-            .child(name_row)
+            .child(
+                h_flex()
+                    .min_w_0()
+                    .flex_1()
+                    .overflow_hidden()
+                    .child(name_row),
+            )
             .when(GitPanelSettings::get_global(cx).diff_stats, |el| {
                 el.when_some(entry.diff_stat, move |this, stat| {
                     let id = format!("diff-stat-{}", id_for_diff_stat);
@@ -10150,6 +10160,13 @@ impl GitPanel {
         cx: &mut Context<Workspace>,
     ) -> Entity<Self> {
         Self::new(workspace, window, cx)
+    }
+
+    pub fn commit_history_shas(&self) -> Vec<Oid> {
+        self.commit_history_entries()
+            .iter()
+            .map(|entry| entry.sha)
+            .collect()
     }
 
     pub fn active_repository(&self) -> Option<&Entity<Repository>> {
