@@ -231,8 +231,10 @@ fn icon_path() -> std::path::PathBuf {
 
     #[cfg(windows)]
     let icon = format!("resources/windows/app-icon{}.ico", channel);
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     let icon = format!("resources/app-icon{}.png", channel);
+    #[cfg(not(any(windows, target_os = "macos")))]
+    let icon = "resources/app-icon-dev.png".to_owned();
 
     std::path::PathBuf::from_str(&icon).unwrap()
 }

@@ -70,7 +70,7 @@ def main():
         (extensions / ".bundle-version").write_text(digest.hexdigest() + "\n")
         launcher = stage / "usr/bin/zed-nick"
         launcher.parent.mkdir(parents=True)
-        shutil.copy2(ROOT / "script/zed-nick-launch", launcher)
+        launcher.write_bytes((ROOT / "script/zed-nick-launch").read_bytes().replace(b"\r\n", b"\n"))
         launcher.chmod(0o755)
         desktop = stage / "usr/share/applications/zed-nick.desktop"
         desktop.parent.mkdir(parents=True)
@@ -80,7 +80,7 @@ def main():
                            "MimeType=text/plain;inode/directory;x-scheme-handler/zed;\n")
         icon = stage / "usr/share/icons/hicolor/512x512/apps/zed-nick.png"
         icon.parent.mkdir(parents=True)
-        shutil.copy2(ROOT / "crates/zed/resources/app-icon.png", icon)
+        shutil.copy2(ROOT / "crates/zed/resources/app-icon-dev.png", icon)
         documentation = stage / "usr/share/doc/zed-nick"
         documentation.mkdir(parents=True)
         shutil.copy2(ROOT / "LICENSE-GPL", documentation / "copyright")
