@@ -24,7 +24,7 @@ Other platforms are not yet available:
 
 Double-click [`build-portable.bat`](./build-portable.bat) (requires PowerShell 7). It builds with 8 parallel jobs, retains Cargo's cache, builds GUI and CLI separately, and creates `ZedNick-Portable.zip` in the repository root. Extract the ZIP and double-click `Zed.exe`; its adjacent `portable-data` directory holds the profile. An explicit `--user-data-dir` takes precedence. The ZIP starts with a blank profile, and the archive is gitignored.
 
-The title bar contains an entry selector, Run/Rerun and Stop. Entry discovery runs in the background against non-ignored project files. Per-language runtimes and environment variables are configured in `.zed/run-environments.json`; the menu can create/open the configuration. Java entries use incremental Maven `compile` plus module classpaths and skip Maven when the input/output cache is unchanged. Existing `primary-run` tasks are retained only when no Java entry is discovered. Private project environment configuration is preserved. This is initial discovery for common entry forms, not a complete language semantic index.
+The title bar contains an entry selector, Run/Rerun and Stop. Entry discovery runs in the background against non-ignored project files. Per-language runtimes and environment variables are configured in `.zed/zed-runner.json`; the menu can create/open the configuration. Java entries use incremental Maven `compile` plus module classpaths and skip Maven when the input/output cache is unchanged. Existing `primary-run` tasks are retained only when no Java entry is discovered. Private project environment configuration is preserved. This is initial discovery for common entry forms, not a complete language semantic index.
 
 Project panel setting `project_panel.collapse_children_on_collapse` defaults to `true`. Collapsing a parent resets descendant expansion state; set it to `false` to preserve the previous behavior. The setting also appears as **Collapse Children With Parent** in Settings.
 
@@ -61,3 +61,15 @@ Zed is developed by **Zed Industries, Inc.**, a for-profit company.
 If you’d like to financially support the project, you can do so via GitHub Sponsors.
 Sponsorships go directly to Zed Industries and are used as general company revenue.
 There are no perks or entitlements associated with sponsorship.
+
+### Interface language
+
+The interface defaults to English on Windows, macOS and Linux. In Settings, search
+for **Interface Language**, then select **English** or **简体中文** from the dropdown.
+The equivalent user setting is `"ui_language": "zh-CN"` (`"en"` for English).
+Switching languages refreshes application menus, settings and open windows.
+Settings search accepts English names and Chinese translations. Translation strings
+are maintained in `assets/locales/zh-CN`. File names, source code, commit
+messages and technical identifiers are never translated automatically. Unknown UI
+strings fall back to English. Run `python script/tests/test_localization.py` to
+check the main settings and application menu translation coverage.

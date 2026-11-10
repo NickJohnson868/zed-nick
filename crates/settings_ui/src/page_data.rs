@@ -1099,9 +1099,23 @@ fn appearance_page() -> SettingsPage {
         ]
     }
 
-    fn ui_font_section() -> [SettingsPageItem; 6] {
+    fn ui_font_section() -> [SettingsPageItem; 7] {
         [
             SettingsPageItem::SectionHeader("UI Font"),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Interface Language",
+                description: "Choose the interface language. Changes apply immediately.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("ui_language"),
+                    pick: |settings_content| settings_content.ui_language.as_ref(),
+                    write: |settings_content, value, _| {
+                        settings_content.ui_language = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
             SettingsPageItem::SettingItem(SettingItem {
                 title: "Font Family",
                 description: "Font family for UI elements.",
@@ -5494,7 +5508,7 @@ fn window_and_layout_page() -> SettingsPage {
 }
 
 fn panels_page() -> SettingsPage {
-    fn project_panel_section() -> [SettingsPageItem; 31] {
+    fn project_panel_section() -> [SettingsPageItem; 32] {
         [
             SettingsPageItem::SectionHeader("Project Panel"),
             SettingsPageItem::SettingItem(SettingItem {
@@ -6143,6 +6157,25 @@ fn panels_page() -> SettingsPage {
                             .sort_order = value;
                     },
                     json_path: Some("project_panel.sort_order"),
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Open Mode",
+                description: "Whether files open with a single click or a double click.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("project_panel.open_mode"),
+                    pick: |settings_content| {
+                        settings_content.project_panel.as_ref()?.open_mode.as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .project_panel
+                            .get_or_insert_default()
+                            .open_mode = value;
+                    },
                 }),
                 metadata: None,
                 files: USER,

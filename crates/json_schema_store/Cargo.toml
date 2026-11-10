@@ -23,6 +23,7 @@ project = { workspace = true, features = ["test-support"] }
 settings = { workspace = true, features = ["test-support"] }
 
 [dependencies]
+i18n.workspace = true
 anyhow.workspace = true
 collections.workspace = true
 dap.workspace = true

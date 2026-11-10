@@ -1,21 +1,20 @@
 {
-  "active_connection": "local-dev",
+  "active_connection": "",
   "connections": {
-    "local-dev": {
-      "application_yaml": "ai-manager-app/ai-manager-runtime/src/main/resources/application-dev.yaml",
-      "yaml_section": "spring.datasource",
-      "ssl_mode": "disable",
-      "schemas": ["public", "system", "o2o"],
-      "schema_cache_seconds": 300
-    },
-    "another-local": {
+    "local": {
       "host": "127.0.0.1",
       "port": 5432,
       "database": "your_database",
       "user": "your_user",
       "password_env": "MYBATIS_PG_PASSWORD",
       "ssl_mode": "disable",
-      "schemas": ["public"]
+      "schemas": [
+        "public"
+      ],
+      "search_path": [
+        "public"
+      ],
+      "schema_cache_seconds": 300
     }
   }
 }

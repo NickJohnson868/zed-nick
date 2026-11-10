@@ -396,7 +396,7 @@ impl TitleBar {
                     .gap_1()
                     .child(
                         IconButton::new("leave-call", IconName::Exit)
-                            .tooltip(Tooltip::text("Leave Call"))
+                            .tooltip(Tooltip::text(i18n::t!("Leave Call")))
                             .icon_size(IconSize::Small)
                             .on_click(move |_, _window, cx| {
                                 ActiveCall::global(cx)
@@ -468,7 +468,7 @@ impl TitleBar {
                         if is_muted {
                             if is_deafened {
                                 Tooltip::with_meta(
-                                    "Unmute Microphone",
+                                    i18n::t!("Unmute Microphone"),
                                     None,
                                     "Audio will be unmuted",
                                     cx,
@@ -578,7 +578,7 @@ impl TitleBar {
                                 if is_shared {
                                     this.tooltip(move |_, cx| {
                                         Tooltip::with_meta(
-                                            "Unshare Project",
+                                            i18n::t!("Unshare Project"),
                                             None,
                                             unshare_meta.clone(),
                                             cx,
@@ -590,13 +590,13 @@ impl TitleBar {
                                         },
                                     ))
                                 } else if is_sharing_disabled {
-                                    this.disabled(true).tooltip(Tooltip::text(
+                                    this.disabled(true).tooltip(Tooltip::text(i18n::translate(
                                         "This project may not be shared in a public channel.",
-                                    ))
+                                    )))
                                 } else {
                                     this.tooltip(move |_, cx| {
                                         Tooltip::with_meta(
-                                            "Share Project",
+                                            i18n::t!("Share Project"),
                                             None,
                                             share_meta.clone(),
                                             cx,

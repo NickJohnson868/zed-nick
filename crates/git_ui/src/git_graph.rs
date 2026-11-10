@@ -4481,7 +4481,7 @@ impl Render for GitGraph {
                                                     .color(Color::Muted)
                                                     .truncate()
                                                     .into_any_element(),
-                                                Label::new("Description")
+                                                Label::new(i18n::t!("Description"))
                                                     .color(Color::Muted)
                                                     .into_any_element(),
                                                 Label::new("Date")
@@ -4490,7 +4490,7 @@ impl Render for GitGraph {
                                                 Label::new("Author")
                                                     .color(Color::Muted)
                                                     .into_any_element(),
-                                                Label::new("Commit")
+                                                Label::new(i18n::t!("Commit"))
                                                     .color(Color::Muted)
                                                     .into_any_element(),
                                             ],
@@ -4499,7 +4499,7 @@ impl Render for GitGraph {
                                     } else {
                                         TableRow::from_vec(
                                             vec![
-                                                Label::new("Description")
+                                                Label::new(i18n::t!("Description"))
                                                     .color(Color::Muted)
                                                     .into_any_element(),
                                                 Label::new("Date")
@@ -4508,7 +4508,7 @@ impl Render for GitGraph {
                                                 Label::new("Author")
                                                     .color(Color::Muted)
                                                     .into_any_element(),
-                                                Label::new("Commit")
+                                                Label::new(i18n::t!("Commit"))
                                                     .color(Color::Muted)
                                                     .into_any_element(),
                                             ],

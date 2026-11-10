@@ -164,7 +164,7 @@ impl TerminalPanel {
                                         // hence we focus that first. Otherwise, we'd end up without a focused element, as
                                         // context menu will be gone the moment we spawn the modal.
                                         .action(
-                                            "Spawn Task",
+                                            i18n::t!("Spawn Task"),
                                             zed_actions::Spawn::modal().boxed_clone(),
                                         )
                                 });
@@ -193,10 +193,22 @@ impl TerminalPanel {
                                             split_context.clone(),
                                             |menu, split_context| menu.context(split_context),
                                         )
-                                        .action("Split Right", SplitRight::default().boxed_clone())
-                                        .action("Split Left", SplitLeft::default().boxed_clone())
-                                        .action("Split Up", SplitUp::default().boxed_clone())
-                                        .action("Split Down", SplitDown::default().boxed_clone())
+                                        .action(
+                                            i18n::t!("Split Right"),
+                                            SplitRight::default().boxed_clone(),
+                                        )
+                                        .action(
+                                            i18n::t!("Split Left"),
+                                            SplitLeft::default().boxed_clone(),
+                                        )
+                                        .action(
+                                            i18n::t!("Split Up"),
+                                            SplitUp::default().boxed_clone(),
+                                        )
+                                        .action(
+                                            i18n::t!("Split Down"),
+                                            SplitDown::default().boxed_clone(),
+                                        )
                                     })
                                     .into()
                                 }
@@ -1413,7 +1425,10 @@ impl Render for FailedToSpawnTerminal {
             .menu(move |window, cx| {
                 Some(ContextMenu::build(window, cx, |context_menu, _, _| {
                     context_menu
-                        .action("Open Settings", zed_actions::OpenSettings.boxed_clone())
+                        .action(
+                            i18n::t!("Open Settings"),
+                            zed_actions::OpenSettings.boxed_clone(),
+                        )
                         .action(
                             "Edit settings.json",
                             zed_actions::OpenSettingsFile.boxed_clone(),

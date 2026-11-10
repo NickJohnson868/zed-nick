@@ -1,6 +1,6 @@
 id = "zed-runner"
 name = "Personal Run and Debug"
-version = "0.3.0"
+version = "0.4.0"
 schema_version = 1
 authors = ["62453"]
-description = "Personal project entry discovery for the Zed-Nick toolbar"
+description = "Native cross-platform project runners with one zed-runner.json configuration"

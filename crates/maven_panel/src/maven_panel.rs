@@ -1,3 +1,6 @@
+#[path = "../../../plugin/zed-runner/config.rs"]
+mod runner_config;
+
 mod model;
 mod pom;
 
@@ -544,16 +547,7 @@ impl MavenPanel {
                 .has_running_task_with_tag(module.worktree, TASK_TAG, cx),
             "Maven 任务正在运行；请等待或停止任务"
         );
-        let read_config = |name: &str| -> Result<serde_json::Value> {
-            let path = module.root.join(name);
-            if !path.is_file() {
-                return Ok(serde_json::Value::Null);
-            }
-            let text = std::fs::read_to_string(path).context("无法读取 Maven 运行配置")?;
-            Ok(serde_json::from_str(text.trim_start_matches('\u{feff}'))
-                .context("Maven 运行配置不是有效 JSON")?)
-        };
-        let config = read_config(".zed/run-environments.json")?;
+        let config = runner_config::load(&module.root)?;
         let settings = &config["environments"]["java"];
         let reactor = module.reactor.parent().context("Reactor 目录无效")?;
         let mut build_tool = settings["build_tool"]
@@ -697,7 +691,7 @@ impl MavenPanel {
             use_new_terminal: false,
             ..Default::default()
         };
-        let private = read_config(".zed/run-config.json")?;
+        let private = &config;
         for variables in [private["env"].as_object(), settings["env"].as_object()]
             .into_iter()
             .flatten()

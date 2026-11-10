@@ -114,6 +114,7 @@ members = [
     "crates/http_client_tls",
     "crates/http_proxy",
     "crates/icons",
+    "crates/i18n",
     "crates/image_viewer",
     "crates/input_latency_ui",
     "crates/inspector_ui",
@@ -379,6 +380,7 @@ gpui_macos = { path = "crates/gpui_macos", default-features = false }
 gpui_macros = { path = "crates/gpui_macros" }
 gpui_platform = { path = "crates/gpui_platform", default-features = false }
 gpui_shared_string = { path = "crates/gpui_shared_string" }
+i18n = { path = "crates/i18n" }
 gpui_tokio = { path = "crates/gpui_tokio" }
 gpui_util = { path = "crates/gpui_util" }
 gpui_web = { path = "crates/gpui_web", default-features = false }

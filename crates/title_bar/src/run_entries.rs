@@ -6,11 +6,11 @@ use std::{
 };
 use task::{DebugScenario, TaskTemplate};
 
-pub const CONFIG_PATH: &str = ".zed/run-environments.json";
+#[path = "../../../plugin/zed-runner/config.rs"]
+mod runner_config;
+pub use runner_config::CONFIG_PATH;
 pub const RUN_TAG: &str = "toolbar-run";
-const PROVIDER_SCRIPT: &str = "run-provider.ps1";
-const TEMPLATE_FILE: &str = "run-environments.template.json";
-const TEMPLATE_SCRIPT: &str = "config-template.ps1";
+const PROVIDER_MARKER: &str = "scripts/JavaRunner.java";
 
 #[derive(Clone, Deserialize)]
 pub struct RunEntry {
@@ -22,15 +22,6 @@ pub struct RunEntry {
     pub task: TaskTemplate,
     #[serde(default)]
     pub debug: Option<DebugScenario>,
-}
-
-#[derive(Deserialize)]
-struct ProviderOutput {
-    version: u32,
-    #[serde(default)]
-    entries: Vec<RunEntry>,
-    #[serde(default)]
-    warnings: Vec<String>,
 }
 
 pub struct Discovery {
@@ -51,52 +42,12 @@ fn providers() -> Result<Vec<PathBuf>> {
     };
     for directory in directories {
         let directory = directory?.path();
-        if directory.join("extension.toml").is_file() && directory.join(PROVIDER_SCRIPT).is_file() {
+        if directory.join("extension.toml").is_file() && directory.join(PROVIDER_MARKER).is_file() {
             providers.push(directory);
         }
     }
     providers.sort();
     Ok(providers)
-}
-
-fn provider_shell() -> Option<PathBuf> {
-    if cfg!(windows) {
-        if let Some(path) = std::env::var_os("PATH") {
-            let directories: Vec<_> = std::env::split_paths(&path).collect();
-            for name in ["powershell.exe", "pwsh.exe"] {
-                if let Some(candidate) = directories
-                    .iter()
-                    .map(|directory| directory.join(name))
-                    .find(|candidate| candidate.is_file())
-                {
-                    return Some(candidate);
-                }
-            }
-        }
-        let shell = std::env::var_os("SystemRoot")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(r"C:\Windows"))
-            .join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
-        return shell.is_file().then_some(shell);
-    }
-    if let Some(path) = std::env::var_os("PATH") {
-        for directory in std::env::split_paths(&path) {
-            let candidate = directory.join(if cfg!(windows) { "pwsh.exe" } else { "pwsh" });
-            if candidate.is_file() {
-                return Some(candidate);
-            }
-        }
-    }
-    for path in [
-        "/opt/homebrew/bin/pwsh",
-        "/usr/local/bin/pwsh",
-        "/usr/bin/pwsh",
-    ] {
-        if Path::new(path).is_file() {
-            return Some(PathBuf::from(path));
-        }
-    }
-    None
 }
 
 fn read_run_config(path: &Path) -> Result<serde_json::Value> {
@@ -207,7 +158,7 @@ fn native_java_entries(root: &Path, provider: &Path) -> Result<Vec<RunEntry>> {
         }
     }
     let mut environment = serde_json::Map::new();
-    let private = read_run_config(&root.join(".zed/run-config.json"))?;
+    let private = &config;
     for variables in [&private["env"], &settings["env"]] {
         environment.extend(environment_values(variables)?);
     }
@@ -256,7 +207,7 @@ fn native_java_entries(root: &Path, provider: &Path) -> Result<Vec<RunEntry>> {
         java_source_files(root, &mut files)?;
     }
     let mut entries = Vec::new();
-    let scan_config = read_run_config(&root.join(".zed/runner-ignore.json"))?;
+    let scan_config = &config;
     for file in files {
         if !file.is_file() || file.is_symlink() {
             continue;
@@ -528,13 +479,15 @@ fn native_template() -> Result<String> {
         "java": {"runtime": java.map(|path| path.to_string_lossy().into_owned()).unwrap_or_default(), "build_tool": tool(&["mvnd.exe", "mvn.cmd"], &["mvnd", "mvn"]), "hot_reload": false, "env": {}, "args": [], "jvm_args": []},
         "python": {"runtime": tool(&["python.exe", "python3.exe"], &["python3", "python"]), "uv": tool(&["uv.exe"], &["uv"]), "env": {}},
         "go": {"runtime": tool(&["go.exe"], &["go"]), "env": {}},
-        "javascript": {"runtime": tool(&["npm.cmd", "npm.exe"], &["npm"]), "env": {}}
-    }, "entries": []}),
+        "javascript": {"runtime": tool(&["npm.cmd", "npm.exe"], &["npm"]), "env": {}},
+        "rust": {"runtime": tool(&["cargo.exe"], &["cargo"]), "env": {}},
+        "csharp": {"runtime": tool(&["dotnet.exe"], &["dotnet"]), "env": {}}
+    }, "scan_directories": ["."], "ignore_directories": ["tools"], "entries": []}),
     )?)
 }
 
 fn native_run_config(root: &Path) -> Result<serde_json::Value> {
-    let mut config = read_run_config(&root.join(CONFIG_PATH))?;
+    let mut config = runner_config::load(root)?;
     let detected: serde_json::Value = serde_json::from_str(&native_template()?)?;
     if config.is_null() {
         return Ok(detected);
@@ -549,6 +502,8 @@ fn native_run_config(root: &Path) -> Result<serde_json::Value> {
         ("python", &["runtime", "uv"][..]),
         ("go", &["runtime"][..]),
         ("javascript", &["runtime"][..]),
+        ("rust", &["runtime"][..]),
+        ("csharp", &["runtime"][..]),
     ] {
         ensure!(
             config["environments"][language].is_null()
@@ -628,12 +583,14 @@ fn collect_source_files(directory: &Path, files: &mut Vec<PathBuf>) -> Result<()
 
 fn native_other_entries(root: &Path, provider: &Path) -> Result<Vec<RunEntry>> {
     let config = native_run_config(root)?;
-    let scan = read_run_config(&root.join(".zed/runner-ignore.json"))?;
+    let scan = &config;
     let python_settings = &config["environments"]["python"];
     let python = native_runtime(python_settings, "runtime")?;
     let uv = native_runtime(python_settings, "uv")?;
     let go = native_runtime(&config["environments"]["go"], "runtime")?;
     let npm = native_runtime(&config["environments"]["javascript"], "runtime")?;
+    let cargo = native_runtime(&config["environments"]["rust"], "runtime")?;
+    let dotnet = native_runtime(&config["environments"]["csharp"], "runtime")?;
     let mut files = Vec::new();
     let output = util::command::new_std_command("git")
         .args([
@@ -889,6 +846,42 @@ fn native_other_entries(root: &Path, provider: &Path) -> Result<Vec<RunEntry>> {
                     )?);
                 }
             }
+            Some("toml")
+                if file.file_name().is_some_and(|name| name == "Cargo.toml") && cargo.is_some() =>
+            {
+                let cargo = cargo.as_ref().context("Rust 运行工具不可用")?;
+                let mut entry = native_entry(
+                    format!("rust:{relative}"),
+                    "rust",
+                    &relative,
+                    &format!("Cargo · {relative}"),
+                    cargo,
+                    &["run".into()],
+                    environment("rust")?,
+                    directory,
+                )?;
+                entry.matching_extensions = vec!["rs".into(), "toml".into()];
+                entries.push(entry);
+            }
+            Some("csproj" | "fsproj") if dotnet.is_some() => {
+                let dotnet = dotnet.as_ref().context(".NET 运行工具不可用")?;
+                let mut entry = native_entry(
+                    format!("csharp:{relative}"),
+                    "csharp",
+                    &relative,
+                    &format!(".NET · {relative}"),
+                    dotnet,
+                    &[
+                        "run".into(),
+                        "--project".into(),
+                        file.to_string_lossy().into_owned(),
+                    ],
+                    environment("csharp")?,
+                    directory,
+                )?;
+                entry.matching_extensions = vec!["cs".into(), "fs".into()];
+                entries.push(entry);
+            }
             _ => {}
         }
     }
@@ -911,44 +904,9 @@ fn native_other_entries(root: &Path, provider: &Path) -> Result<Vec<RunEntry>> {
     Ok(entries)
 }
 
-pub fn config_template() -> Result<String> {
-    for provider in providers()? {
-        if provider.join("scripts/JavaRunner.java").is_file() {
-            return native_template();
-        }
-        let generator = provider.join(TEMPLATE_SCRIPT);
-        if generator.is_file()
-            && let Some(shell) = provider_shell()
-        {
-            let output = std::process::Command::new(shell)
-                .args([
-                    "-NoLogo",
-                    "-NoProfile",
-                    "-NonInteractive",
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-File",
-                ])
-                .arg(&generator)
-                .output()
-                .with_context(|| format!("无法运行配置模板：{}", generator.display()))?;
-            ensure!(
-                output.status.success(),
-                "生成运行环境模板失败：{}",
-                String::from_utf8_lossy(&output.stderr).trim()
-            );
-            ensure!(output.stdout.len() <= 64 * 1024, "运行环境模板输出过大");
-            serde_json::from_slice::<serde_json::Value>(&output.stdout)
-                .context("运行环境模板不是有效 JSON")?;
-            return String::from_utf8(output.stdout).context("运行环境模板不是 UTF-8 文本");
-        }
-        let template = provider.join(TEMPLATE_FILE);
-        if template.is_file() {
-            return fs::read_to_string(&template)
-                .with_context(|| format!("无法读取运行环境模板：{}", template.display()));
-        }
-    }
-    Ok("{\n  \"environments\": {},\n  \"entries\": []\n}\n".into())
+pub fn config_template(root: &Path) -> Result<String> {
+    runner_config::load(root)?;
+    native_template()
 }
 
 pub async fn discover(root: &Path) -> Result<Discovery> {
@@ -960,10 +918,10 @@ pub async fn discover(root: &Path) -> Result<Discovery> {
     if providers.is_empty() {
         discovery
             .warnings
-            .push("未安装启动入口扩展；请安装带 run-provider.ps1 的开发扩展".into());
+            .push("未安装原生启动入口扩展；请安装 zed-runner".into());
     }
     for provider in providers {
-        if provider.join("scripts/JavaRunner.java").is_file() {
+        if provider.join(PROVIDER_MARKER).is_file() {
             let config = native_run_config(root)?;
             for (language, marker, message) in [
                 (
@@ -1000,75 +958,6 @@ pub async fn discover(root: &Path) -> Result<Discovery> {
                 .extend(native_other_entries(root, &provider)?);
             continue;
         }
-        let Some(shell) = provider_shell() else {
-            continue;
-        };
-        let script = provider.join(PROVIDER_SCRIPT);
-        let output = util::command::new_command(shell)
-            .args([
-                "-NoLogo",
-                "-NoProfile",
-                "-NonInteractive",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-            ])
-            .arg(&script)
-            .arg("-Root")
-            .arg(root)
-            .current_dir(root)
-            .kill_on_drop(true)
-            .output()
-            .await
-            .with_context(|| {
-                format!(
-                    "无法启动运行入口扩展（Windows 使用系统 PowerShell，其他平台需要 pwsh）：{}",
-                    provider.display()
-                )
-            })?;
-        ensure!(
-            output.status.success(),
-            "运行入口扩展失败（{}）：{}",
-            provider.display(),
-            String::from_utf8_lossy(&output.stderr).trim()
-        );
-        ensure!(
-            output.stdout.len() <= 8 * 1024 * 1024,
-            "运行入口扩展输出过大：{}",
-            provider.display()
-        );
-        let response: ProviderOutput = serde_json::from_slice(&output.stdout)
-            .with_context(|| format!("运行入口扩展返回无效 JSON：{}", provider.display()))?;
-        ensure!(
-            response.version == 1,
-            "运行入口扩展协议版本不支持：{}",
-            provider.display()
-        );
-        for entry in response.entries {
-            ensure!(
-                !entry.id.is_empty() && !entry.task.command.is_empty(),
-                "运行入口扩展返回空入口：{}",
-                provider.display()
-            );
-            ensure!(
-                !entry.file.is_absolute()
-                    && !entry
-                        .file
-                        .components()
-                        .any(|component| matches!(component, std::path::Component::ParentDir)),
-                "运行入口扩展返回项目外文件：{}",
-                provider.display()
-            );
-            if let Some(index) = discovery
-                .entries
-                .iter()
-                .position(|existing: &RunEntry| existing.id == entry.id)
-            {
-                discovery.entries.remove(index);
-            }
-            discovery.entries.push(entry);
-        }
-        discovery.warnings.extend(response.warnings);
     }
     Ok(discovery)
 }
@@ -1207,7 +1096,7 @@ mod native_tests {
                 .is_some_and(|value| value.starts_with("6:中文"))
         );
         write(
-            &root.join(".zed/runner-ignore.json"),
+            &root.join(CONFIG_PATH),
             r#"{"scan_directories":["src"],"ignore_directories":[]}"#,
         )?;
         assert!(native_other_entries(&root, &provider)?.is_empty());

@@ -5,8 +5,8 @@ use smallvec::SmallVec;
 
 use crate::prelude::*;
 
-const START_TAB_SLOT_SIZE: Pixels = px(12.);
-const END_TAB_SLOT_SIZE: Pixels = px(14.);
+const START_TAB_SLOT_SIZE: Pixels = px(18.);
+const END_TAB_SLOT_SIZE: Pixels = px(18.);
 
 /// The position of a [`Tab`] within a list of tabs.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -109,7 +109,7 @@ impl ParentElement for Tab {
 impl RenderOnce for Tab {
     #[allow(refining_impl_trait)]
     fn render(self, _: &mut Window, cx: &mut App) -> Stateful<Div> {
-        let (text_color, tab_bg, _tab_hover_bg, _tab_active_bg) = match self.selected {
+        let (text_color, tab_bg, tab_hover_bg, tab_active_bg) = match self.selected {
             false => (
                 cx.theme().colors().text_muted,
                 cx.theme().colors().tab_inactive_background,
@@ -165,6 +165,10 @@ impl RenderOnce for Tab {
                 TabPosition::Middle(Ordering::Greater) => this.border_r_1().pl_px().border_b_1(),
             })
             .cursor_pointer()
+            .when(!self.selected, |this| {
+                this.hover(|style| style.bg(tab_hover_bg))
+                    .active(|style| style.bg(tab_active_bg))
+            })
             .child(
                 h_flex()
                     .group("")

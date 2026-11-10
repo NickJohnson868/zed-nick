@@ -553,11 +553,11 @@ fn run() -> Result<()> {
     };
 
     let env = {
-        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        #[cfg(not(target_os = "windows"))]
         {
             use collections::HashMap;
 
-            // On Linux, the desktop entry uses `cli` to spawn `zed`.
+            // Desktop launchers must not replace the worktree environment with their own.
             // We need to handle env vars correctly since std::env::vars() may not contain
             // project-specific vars (e.g. those set by direnv).
             // By setting env to None here, the LSP will use worktree env vars instead,
@@ -574,13 +574,6 @@ fn run() -> Result<()> {
             // On Windows, by default, a child process inherits a copy of the environment block of the parent process.
             // So we don't need to pass env vars explicitly.
             None
-        }
-
-        #[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "windows")))]
-        {
-            use collections::HashMap;
-
-            Some(std::env::vars().collect::<HashMap<_, _>>())
         }
     };
 

@@ -15,4 +15,3 @@ sqlparser = { version = "0.63.0", default-features = false, features = ["std"] }
 postgres = "0.19.14"
 postgres-native-tls = "0.5.3"
 native-tls = "0.2.18"
-serde_yaml_ng = "=0.10.0"

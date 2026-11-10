@@ -3174,7 +3174,7 @@ impl Pane {
                     if let Some(pane) = pane.upgrade() {
                         menu = menu
                             .entry(
-                                "Close",
+                                i18n::t!("Close"),
                                 Some(Box::new(close_active_item_action)),
                                 window.handler_for(&pane, move |pane, window, cx| {
                                     pane.close_item_by_id(item_id, SaveIntent::Close, window, cx)
@@ -3361,7 +3361,7 @@ impl Pane {
                                 .separator()
                                 .when_some(entry_abs_path, |menu, abs_path| {
                                     menu.entry(
-                                        "Copy Path",
+                                        i18n::t!("Copy Path"),
                                         Some(Box::new(zed_actions::workspace::CopyPath)),
                                         window.handler_for(&pane, move |_, _, cx| {
                                             cx.write_to_clipboard(ClipboardItem::new_string(
@@ -3372,7 +3372,7 @@ impl Pane {
                                 })
                                 .when_some(relative_path, |menu, relative_path| {
                                     menu.entry(
-                                        "Copy Relative Path",
+                                        i18n::t!("Copy Relative Path"),
                                         Some(Box::new(zed_actions::workspace::CopyRelativePath)),
                                         window.handler_for(&pane, move |this, _, cx| {
                                             let Some(project) = this.project.upgrade() else {
@@ -4402,15 +4402,18 @@ fn default_render_tab_bar_buttons(
                     ContextMenu::build(window, cx, |menu, _, _| {
                         let mode = SplitMode::MovePane;
                         if can_split_move {
-                            menu.action("Split Right", SplitRight { mode }.boxed_clone())
-                                .action("Split Left", SplitLeft { mode }.boxed_clone())
-                                .action("Split Up", SplitUp { mode }.boxed_clone())
-                                .action("Split Down", SplitDown { mode }.boxed_clone())
+                            menu.action(i18n::t!("Split Right"), SplitRight { mode }.boxed_clone())
+                                .action(i18n::t!("Split Left"), SplitLeft { mode }.boxed_clone())
+                                .action(i18n::t!("Split Up"), SplitUp { mode }.boxed_clone())
+                                .action(i18n::t!("Split Down"), SplitDown { mode }.boxed_clone())
                         } else {
-                            menu.action("Split Right", SplitRight::default().boxed_clone())
-                                .action("Split Left", SplitLeft::default().boxed_clone())
-                                .action("Split Up", SplitUp::default().boxed_clone())
-                                .action("Split Down", SplitDown::default().boxed_clone())
+                            menu.action(
+                                i18n::t!("Split Right"),
+                                SplitRight::default().boxed_clone(),
+                            )
+                            .action(i18n::t!("Split Left"), SplitLeft::default().boxed_clone())
+                            .action(i18n::t!("Split Up"), SplitUp::default().boxed_clone())
+                            .action(i18n::t!("Split Down"), SplitDown::default().boxed_clone())
                         }
                     })
                     .into()

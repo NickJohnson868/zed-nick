@@ -1,0 +1,40 @@
+{
+  "scan_directories": [
+    "."
+  ],
+  "ignore_directories": [
+    "tools"
+  ],
+  "environments": {
+    "java": {
+      "runtime": "",
+      "build_tool": "",
+      "hot_reload": false,
+      "env": {},
+      "args": [],
+      "jvm_args": []
+    },
+    "python": {
+      "runtime": "",
+      "uv": "",
+      "env": {}
+    },
+    "go": {
+      "runtime": "",
+      "env": {}
+    },
+    "javascript": {
+      "runtime": "",
+      "env": {}
+    },
+    "rust": {
+      "runtime": "",
+      "env": {}
+    },
+    "csharp": {
+      "runtime": "",
+      "env": {}
+    }
+  },
+  "entries": []
+}

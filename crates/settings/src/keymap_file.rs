@@ -678,6 +678,12 @@ impl KeymapFile {
         deprecations: &HashMap<&'a str, &'a str>,
         deprecation_messages: &HashMap<&'a str, &'a str>,
     ) -> serde_json::Value {
+        let localized_documentation =
+            crate::settings_store::localized_action_documentation(action_documentation);
+        let action_documentation = &localized_documentation
+            .iter()
+            .map(|(name, description)| (*name, description.as_str()))
+            .collect::<HashMap<_, _>>();
         fn add_deprecation(schema: &mut schemars::Schema, message: String) {
             schema.insert(
                 // deprecationMessage is not part of the JSON Schema spec, but
@@ -867,7 +873,9 @@ impl KeymapFile {
             }),
         );
 
-        generator.root_schema_for::<KeymapFile>().to_value()
+        let mut schema = generator.root_schema_for::<KeymapFile>().to_value();
+        crate::settings_store::localize_schema_descriptions(&mut schema);
+        schema
     }
 
     pub fn sections(&self) -> impl DoubleEndedIterator<Item = &KeymapSection> {

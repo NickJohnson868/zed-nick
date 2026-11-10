@@ -169,9 +169,35 @@ pub enum ReduceMotionMode {
     Off,
 }
 
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    MergeFrom,
+    strum::VariantArray,
+    strum::VariantNames,
+)]
+pub enum UiLanguage {
+    #[default]
+    #[serde(rename = "en")]
+    #[strum(serialize = "English")]
+    English,
+    #[serde(rename = "zh-CN")]
+    #[strum(serialize = "简体中文")]
+    SimplifiedChinese,
+}
+
 #[with_fallible_options]
 #[derive(Debug, PartialEq, Default, Clone, Serialize, JsonSchema, MergeFrom)]
 pub struct SettingsContent {
+    /// Interface language: `en` or `zh-CN`.
+    pub ui_language: Option<UiLanguage>,
+
     #[serde(flatten)]
     pub project: ProjectSettingsContent,
 
@@ -408,6 +434,7 @@ impl SettingsContent {
 fallible_options::flattened_deserialize!(SettingsContent {
     sections: { project, theme, extension, workspace, editor, remote },
     options: {
+        ui_language,
         call_hierarchy, command_palette, file_finder, git_panel, git_graph, tabs, tab_bar, tab_switcher, status_bar, preview_tabs, agent,
         agent_servers, audio, auto_update, base_keymap, collaboration_panel, debugger, diagnostics,
         git,

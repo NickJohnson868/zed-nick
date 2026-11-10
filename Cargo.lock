@@ -3384,6 +3384,7 @@ dependencies = [
 name = "command_palette"
 version = "0.1.0"
 dependencies = [
+ "i18n",
  "anyhow",
  "client",
  "command_palette_hooks",
@@ -5429,6 +5430,7 @@ dependencies = [
 name = "editor"
 version = "0.1.0"
 dependencies = [
+ "i18n",
  "aho-corasick",
  "anyhow",
  "assets",
@@ -6109,6 +6111,7 @@ dependencies = [
 name = "extensions_ui"
 version = "0.1.0"
 dependencies = [
+ "i18n",
  "anyhow",
  "cloud_api_types",
  "collections",
@@ -7053,6 +7056,7 @@ dependencies = [
 name = "git_ui"
 version = "0.1.0"
 dependencies = [
+ "i18n",
  "agent_settings",
  "anyhow",
  "askpass",
@@ -8434,6 +8438,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "i18n"
+version = "0.1.0"
+dependencies = [
+ "core-foundation 0.10.0",
+ "core-foundation-sys",
+ "gpui_shared_string",
+ "serde",
+ "serde_json",
+ "sys-locale",
+]
+
+[[package]]
 name = "icons"
 version = "0.1.0"
 dependencies = [
@@ -9218,6 +9234,7 @@ dependencies = [
 name = "json_schema_store"
 version = "0.1.0"
 dependencies = [
+ "i18n",
  "anyhow",
  "collections",
  "dap",
@@ -12445,6 +12462,7 @@ dependencies = [
 name = "outline_panel"
 version = "0.1.0"
 dependencies = [
+ "i18n",
  "anyhow",
  "async-channel 2.5.0",
  "buffer_diff",
@@ -14020,6 +14038,7 @@ dependencies = [
 name = "project_panel"
 version = "0.1.0"
 dependencies = [
+ "i18n",
  "anyhow",
  "client",
  "collections",
@@ -16366,6 +16385,7 @@ dependencies = [
 name = "settings"
 version = "0.1.0"
 dependencies = [
+ "i18n",
  "anyhow",
  "collections",
  "ec4rs",
@@ -16459,6 +16479,7 @@ dependencies = [
 name = "settings_ui"
 version = "0.1.0"
 dependencies = [
+ "i18n",
  "agent",
  "agent_settings",
  "agent_skills",
@@ -18053,6 +18074,7 @@ dependencies = [
 name = "terminal_view"
 version = "0.1.0"
 dependencies = [
+ "i18n",
  "anyhow",
  "async-recursion",
  "breadcrumbs",
@@ -18400,6 +18422,7 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 name = "title_bar"
 version = "0.1.0"
 dependencies = [
+ "i18n",
  "agent_settings",
  "anyhow",
  "arrayvec",
@@ -19246,12 +19269,14 @@ dependencies = [
  "gpui",
  "gpui_macros",
  "gpui_util",
+ "i18n",
  "icons",
  "itertools 0.14.0",
  "log",
  "menu",
  "schemars 1.0.4",
  "serde",
+ "serde_json",
  "settings",
  "smallvec",
  "strum 0.28.0",
@@ -21949,6 +21974,7 @@ dependencies = [
 name = "workspace"
 version = "0.1.0"
 dependencies = [
+ "i18n",
  "agent_settings",
  "any_vec",
  "anyhow",

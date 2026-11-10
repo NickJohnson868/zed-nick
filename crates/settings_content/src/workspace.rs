@@ -906,6 +906,10 @@ pub struct ProjectPanelSettingsContent {
     pub drag_and_drop: Option<bool>,
     /// Settings for automatically opening files.
     pub auto_open: Option<ProjectPanelAutoOpenSettings>,
+    /// Whether files open with a single click or a double click.
+    ///
+    /// Default: single_click
+    pub open_mode: Option<ProjectPanelOpenMode>,
     /// How to order sibling entries in the project panel.
     ///
     /// Default: directories_first
@@ -1225,4 +1229,27 @@ impl DocumentSymbols {
 pub struct FocusFollowsMouse {
     pub enabled: Option<bool>,
     pub debounce_ms: Option<u64>,
+}
+
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    MergeFrom,
+    PartialEq,
+    Eq,
+    strum::VariantArray,
+    strum::VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectPanelOpenMode {
+    /// Open files with a single click.
+    #[default]
+    SingleClick,
+    /// Select files with a single click and open them with a double click.
+    DoubleClick,
 }

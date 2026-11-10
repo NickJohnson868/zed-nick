@@ -9,7 +9,7 @@ use language::{
 };
 use parking_lot::RwLock;
 use project::{LspStore, lsp_store::LocalLspAdapterDelegate};
-use settings::{LSP_SETTINGS_SCHEMA_URL_PREFIX, Settings as _, SettingsLocation};
+use settings::{LSP_SETTINGS_SCHEMA_URL_PREFIX, Settings as _, SettingsLocation, SettingsStore};
 use util::schemars::{AllowTrailingCommas, DefaultDenyUnknownFields};
 
 const SCHEMA_URI_PREFIX: &str = "zed://schemas/";
@@ -37,11 +37,6 @@ static INSPECTOR_STYLE_SCHEMA: LazyLock<String> = LazyLock::new(|| {
         .expect("Inspector style schema should serialize")
 });
 
-static KEYMAP_SCHEMA: LazyLock<String> = LazyLock::new(|| {
-    serde_json::to_string(&settings::KeymapFile::generate_json_schema_from_inventory())
-        .expect("Keymap schema should serialize")
-});
-
 static ACTION_SCHEMA_CACHE: LazyLock<RwLock<HashMap<String, String>>> =
     LazyLock::new(|| RwLock::new(HashMap::default()));
 
@@ -54,7 +49,10 @@ static DYNAMIC_SCHEMA_CACHE: LazyLock<RwLock<HashMap<String, String>>> =
     LazyLock::new(|| RwLock::new(HashMap::default()));
 
 pub fn init(cx: &mut App) {
-    cx.set_global(SchemaStore::default());
+    cx.set_global(SchemaStore {
+        language: i18n::language(),
+        ..SchemaStore::default()
+    });
     project::lsp_store::json_language_server_ext::register_schema_handler(
         handle_schema_request,
         cx,
@@ -86,11 +84,26 @@ pub fn init(cx: &mut App) {
         });
     })
     .detach();
+
+    cx.observe_global::<SettingsStore>(|cx| {
+        // The language observer may run after this observer.
+        cx.defer(|cx| {
+            cx.update_global::<SchemaStore, _>(|store, cx| {
+                let language = i18n::language();
+                if store.language != language {
+                    store.language = language;
+                    store.notify_schema_changed(ChangedSchemas::Language, cx);
+                }
+            });
+        });
+    })
+    .detach();
 }
 
 #[derive(Default)]
 pub struct SchemaStore {
     lsp_stores: Vec<WeakEntity<LspStore>>,
+    language: i18n::Language,
 }
 
 impl gpui::Global for SchemaStore {}
@@ -98,6 +111,7 @@ impl gpui::Global for SchemaStore {}
 enum ChangedSchemas {
     Settings,
     DebugTasks,
+    Language,
 }
 
 impl SchemaStore {
@@ -113,6 +127,15 @@ impl SchemaStore {
                     })
                     .map(|(url, _)| url)
                     .collect()
+            }
+            ChangedSchemas::Language => {
+                let uris = ["settings", "project_settings", "keymap"]
+                    .map(|name| format!("{SCHEMA_URI_PREFIX}{name}"));
+                let mut cache = DYNAMIC_SCHEMA_CACHE.write();
+                for uri in &uris {
+                    cache.remove(uri);
+                }
+                uris.into()
             }
             ChangedSchemas::DebugTasks => DYNAMIC_SCHEMA_CACHE
                 .write()
@@ -178,7 +201,6 @@ fn resolve_static_schema(path: &str) -> Option<String> {
         "tasks" => Some(TASKS_SCHEMA.clone()),
         "snippets" => Some(SNIPPETS_SCHEMA.clone()),
         "jsonc" => Some(JSONC_SCHEMA.clone()),
-        "keymap" => Some(KEYMAP_SCHEMA.clone()),
         "zed_inspector_style" => {
             #[cfg(debug_assertions)]
             {
@@ -625,6 +647,28 @@ mod tests {
     use language::FakeLspAdapter;
     use project::Project;
     use settings::SettingsStore;
+
+    #[gpui::test]
+    fn test_language_change_invalidates_localized_schemas(cx: &mut App) {
+        let mut store = SchemaStore::default();
+        let settings = format!("{SCHEMA_URI_PREFIX}settings");
+        let project_settings = format!("{SCHEMA_URI_PREFIX}project_settings");
+        let keymap = format!("{SCHEMA_URI_PREFIX}keymap");
+        let debug = format!("{SCHEMA_URI_PREFIX}debug_tasks");
+        {
+            let mut cache = DYNAMIC_SCHEMA_CACHE.write();
+            for uri in [&settings, &project_settings, &keymap, &debug] {
+                cache.insert(uri.clone(), "cached English schema".into());
+            }
+        }
+        store.notify_schema_changed(ChangedSchemas::Language, cx);
+        let mut cache = DYNAMIC_SCHEMA_CACHE.write();
+        assert!(!cache.contains_key(&settings));
+        assert!(!cache.contains_key(&project_settings));
+        assert!(!cache.contains_key(&keymap));
+        assert!(cache.remove(&debug).is_some());
+        assert!(resolve_static_schema("keymap").is_none());
+    }
 
     #[gpui::test]
     async fn test_project_settings_schema_includes_available_lsp_adapters(cx: &mut TestAppContext) {

@@ -1145,7 +1145,7 @@ mod element {
         HitboxBehavior, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point,
         Size, Style, WeakEntity, Window, px, relative, size,
     };
-    use gpui::{CursorStyle, Hitbox};
+    use gpui::{CursorStyle, Hitbox, MouseButton};
     use parking_lot::Mutex;
     use settings::Settings;
     use smallvec::SmallVec;
@@ -1156,7 +1156,8 @@ mod element {
 
     use crate::WorkspaceSettings;
 
-    use super::{HANDLE_HITBOX_SIZE, HORIZONTAL_MIN_SIZE, VERTICAL_MIN_SIZE};
+    use super::{HORIZONTAL_MIN_SIZE, VERTICAL_MIN_SIZE};
+    use crate::dock::RESIZE_HITBOX_SIZE;
 
     const DIVIDER_SIZE: f32 = 1.0;
 
@@ -1327,11 +1328,9 @@ mod element {
         ) -> PaneAxisHandleLayout {
             let handle_bounds = Bounds {
                 origin: pane_bounds.origin.apply_along(axis, |origin| {
-                    origin + pane_bounds.size.along(axis) - px(HANDLE_HITBOX_SIZE / 2.)
+                    origin + pane_bounds.size.along(axis) - RESIZE_HITBOX_SIZE / 2.
                 }),
-                size: pane_bounds
-                    .size
-                    .apply_along(axis, |_| px(HANDLE_HITBOX_SIZE)),
+                size: pane_bounds.size.apply_along(axis, |_| RESIZE_HITBOX_SIZE),
             };
             let divider_bounds = Bounds {
                 origin: pane_bounds
@@ -1569,7 +1568,7 @@ mod element {
                         let axis = self.axis;
                         move |e: &MouseMoveEvent, phase, window, cx| {
                             let dragged_handle = dragged_handle.borrow();
-                            if phase.bubble() && *dragged_handle == Some(ix) {
+                            if phase.capture() && *dragged_handle == Some(ix) {
                                 Self::compute_resize(
                                     &flexes,
                                     e,
@@ -1580,7 +1579,8 @@ mod element {
                                     workspace.clone(),
                                     window,
                                     cx,
-                                )
+                                );
+                                cx.stop_propagation();
                             }
                         }
                     });
@@ -1589,9 +1589,12 @@ mod element {
 
             window.on_mouse_event({
                 let dragged_handle = layout.dragged_handle.clone();
-                move |_: &MouseUpEvent, phase, _window, _cx| {
-                    if phase.bubble() {
-                        dragged_handle.replace(None);
+                move |event: &MouseUpEvent, phase, _window, cx| {
+                    if phase.capture()
+                        && event.button == MouseButton::Left
+                        && dragged_handle.replace(None).is_some()
+                    {
+                        cx.stop_propagation();
                     }
                 }
             });

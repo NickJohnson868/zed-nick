@@ -133,6 +133,35 @@ async fn test_open_item_on_modifiers_release(cx: &mut gpui::TestAppContext) {
     let tab_1 = open_buffer("1.txt", &workspace, cx).await;
     let tab_2 = open_buffer("2.txt", &workspace, cx).await;
 
+    let immediate = open_tab_switcher(false, &workspace, cx);
+    workspace.read_with(cx, |workspace, cx| {
+        assert!(
+            workspace
+                .active_modal::<TabSwitcher>(cx)
+                .is_some_and(|switcher| switcher.read(cx).visible)
+        );
+    });
+    drop(immediate);
+    cx.simulate_keystrokes("escape");
+
+    cx.simulate_modifiers_change(Modifiers::control());
+    open_tab_switcher(false, &workspace, cx);
+    workspace.read_with(cx, |workspace, cx| {
+        assert!(
+            workspace
+                .active_modal::<TabSwitcher>(cx)
+                .is_some_and(|switcher| !switcher.read(cx).visible)
+        );
+    });
+    cx.simulate_modifiers_change(Modifiers::none());
+    assert_tab_switcher_is_closed(workspace.clone(), cx);
+    // Restore the recent tab order before exercising the delayed mouse interaction.
+    workspace.update_in(cx, |workspace, window, cx| {
+        workspace.active_pane().update(cx, |pane, cx| {
+            pane.activate_item(1, true, true, window, cx);
+        });
+    });
+
     cx.simulate_modifiers_change(Modifiers::control());
     let tab_switcher = open_tab_switcher(false, &workspace, cx);
     tab_switcher.update(cx, |tab_switcher, _| {
@@ -141,6 +170,7 @@ async fn test_open_item_on_modifiers_release(cx: &mut gpui::TestAppContext) {
         assert_match_selection(tab_switcher, 1, tab_1.boxed_clone());
     });
 
+    cx.background_executor.timer(POPOVER_DELAY).await;
     let first_row = cx
         .debug_bounds("tab-switcher-first-item")
         .expect("first tab switcher row should be rendered");
@@ -159,6 +189,7 @@ async fn test_open_item_on_modifiers_release(cx: &mut gpui::TestAppContext) {
 
     cx.simulate_modifiers_change(Modifiers::control());
     open_tab_switcher(false, &workspace, cx);
+    cx.background_executor.timer(POPOVER_DELAY).await;
     let first_row = cx
         .debug_bounds("tab-switcher-first-item")
         .expect("first tab switcher row should be rendered");

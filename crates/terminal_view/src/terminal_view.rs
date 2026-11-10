@@ -606,18 +606,18 @@ impl TerminalView {
                         )
                         .separator()
                 })
-                .action("Copy", Box::new(Copy))
+                .action(i18n::t!("Copy"), Box::new(Copy))
                 .when(
                     !self.read_only && !matches!(self.mode, TerminalMode::Embedded { .. }),
                     |menu| {
-                        menu.action("Paste", Box::new(Paste))
+                        menu.action(i18n::t!("Paste"), Box::new(Paste))
                             .action("Paste Text", Box::new(PasteText))
                     },
                 )
-                .action("Select All", Box::new(SelectAll))
+                .action(i18n::t!("Select All"), Box::new(SelectAll))
                 .when(
                     !self.read_only && !matches!(self.mode, TerminalMode::Embedded { .. }),
-                    |menu| menu.action("Clear", Box::new(Clear)),
+                    |menu| menu.action(i18n::t!("Clear"), Box::new(Clear)),
                 )
                 .when(
                     assistant_enabled && !matches!(self.mode, TerminalMode::Embedded { .. }),

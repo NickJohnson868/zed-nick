@@ -49,6 +49,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Check native packaging and configuration contracts
+        run: python plugin/zed-runner/tests/metadata_smoke.py
       - name: Exercise native runtimes without PowerShell
         run: python plugin/zed-runner/tests/native_smoke.py
       - name: Check bundled Debian plugin installation
@@ -101,5 +103,19 @@ jobs:
           key: personal-app-${{ runner.os }}
       - name: Compile personal app features on this platform
         run: cargo check --locked -p zed -p maven_panel
+      - name: Check display-size SVG icon rasterization
+        run: cargo test --locked -p ui --lib external_icon_tests
+      - name: Check delayed tab switching
+        run: cargo test --locked -p tab_switcher --lib test_open_item_on_modifiers_release
+      - name: Check double-click file opening
+        run: cargo test --locked -p project_panel --lib test_double_click_open_mode
+      - name: Check Git remote branch selection
+        run: cargo test --locked -p git_ui --lib test_remote_branch_names
+      - name: Check cancelling Git remote picker
+        run: cargo test --locked -p git_ui --lib test_cancelling_picker_prompt_resolves_to_none
+      - name: Check localized schema cache invalidation
+        run: cargo test --locked -p json_schema_store --lib test_language_change_invalidates_localized_schemas
+      - name: Check shared internationalization core
+        run: cargo test --locked -p i18n
       - name: Check native entry discovery and task contracts
         run: cargo test --locked -p title_bar --lib native_tests

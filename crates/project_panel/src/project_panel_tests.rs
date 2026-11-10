@@ -13749,3 +13749,50 @@ fn entry_row_bounds(panel: &ProjectPanel, entry_id: ProjectEntryId) -> Bounds<Pi
         size(viewport.size.width, row_height),
     )
 }
+
+#[gpui::test]
+async fn test_double_click_open_mode(cx: &mut TestAppContext) {
+    init_test_with_editor(cx);
+    cx.update(|cx| {
+        let settings = *ProjectPanelSettings::get_global(cx);
+        ProjectPanelSettings::override_global(
+            ProjectPanelSettings {
+                open_mode: settings::ProjectPanelOpenMode::DoubleClick,
+                ..settings
+            },
+            cx,
+        );
+    });
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(path!("/root"), json!({ "file.txt": "contents" }))
+        .await;
+    let project = Project::test(fs, [path!("/root").as_ref()], cx).await;
+    let (window, panel) = create_drag_test_panel(&project, cx);
+    let cx = &mut VisualTestContext::from_window(window, cx);
+    let workspace = panel
+        .read_with(cx, |panel, _| panel.workspace.upgrade())
+        .expect("test workspace");
+    click_project_entry(&panel, "root/file.txt", Modifiers::none(), cx);
+    workspace.read_with(cx, |workspace, cx| {
+        assert_eq!(workspace.active_pane().read(cx).items_len(), 0);
+    });
+    assert!(panel.read_with(cx, |panel, _| panel.selection.is_some()));
+    let position = cx.update(|window, _| window.mouse_position());
+    cx.simulate_event(gpui::MouseDownEvent {
+        position,
+        modifiers: Modifiers::none(),
+        button: MouseButton::Left,
+        click_count: 2,
+        first_mouse: false,
+    });
+    cx.simulate_event(gpui::MouseUpEvent {
+        position,
+        modifiers: Modifiers::none(),
+        button: MouseButton::Left,
+        click_count: 2,
+    });
+    cx.run_until_parked();
+    workspace.read_with(cx, |workspace, cx| {
+        assert_eq!(workspace.active_pane().read(cx).items_len(), 1);
+    });
+}

@@ -7876,7 +7876,6 @@ impl Workspace {
 
         let window_bounds = window.inner_window_bounds();
         let database_id = self.database_id;
-        let has_paths = !self.root_paths(cx).is_empty();
         let db = WorkspaceDb::global(cx);
         let kvp = db::kvp::KeyValueStore::global(cx);
         let native_window_state = if database_id.is_some() {
@@ -7886,11 +7885,9 @@ impl Workspace {
         };
 
         cx.background_executor().spawn(async move {
-            if !has_paths {
-                persistence::write_default_window_bounds(&kvp, window_bounds, display_uuid)
-                    .await
-                    .log_err();
-            }
+            persistence::write_default_window_bounds(&kvp, window_bounds, display_uuid)
+                .await
+                .log_err();
             if let Some(database_id) = database_id {
                 db.set_window_open_status(
                     database_id,
@@ -7900,10 +7897,6 @@ impl Workspace {
                 )
                 .await
                 .log_err();
-            } else {
-                persistence::write_default_window_bounds(&kvp, window_bounds, display_uuid)
-                    .await
-                    .log_err();
             }
         })
     }
@@ -9247,7 +9240,7 @@ impl Workspace {
         div()
             .id("editor-region")
             .role(gpui::Role::Main)
-            .aria_label("Editor")
+            .aria_label(i18n::t!("Editor"))
             .when(window.is_a11y_active(), |this| {
                 this.track_focus(&self.region_focus_handles.editor)
             })

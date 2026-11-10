@@ -23,7 +23,7 @@ use agent_settings::AgentSettings;
 use settings::SidebarDockPosition;
 use ui::{ContextMenu, right_click_menu};
 
-const SIDEBAR_RESIZE_HANDLE_SIZE: Pixels = px(6.0);
+const SIDEBAR_RESIZE_HANDLE_SIZE: Pixels = crate::dock::RESIZE_HITBOX_SIZE;
 
 use crate::open_remote_project_with_existing_connection;
 use crate::{

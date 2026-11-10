@@ -861,7 +861,7 @@ impl GitPanel {
                 .context(self.focus_handle.clone())
                 .when(is_file_or_bulk, |context_menu| {
                     context_menu
-                        .action("Open Diff", menu::Confirm.boxed_clone())
+                        .action(i18n::t!("Open Diff"), menu::Confirm.boxed_clone())
                         .action(titles.view_file, ViewFile.boxed_clone())
                         .separator()
                 })

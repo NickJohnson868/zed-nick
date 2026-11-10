@@ -512,6 +512,7 @@ fn main() {
             AppCommitSha::set_global(app_commit_sha, cx);
         }
         settings::init(cx);
+        ui::localization::init(cx);
         zlog_settings::init(cx);
         zed::watch_settings_files(fs.clone(), cx);
         handle_keymap_file_changes(user_keymap_file_rx, user_keymap_watcher, cx);
@@ -872,6 +873,11 @@ fn main() {
 
         let menus = app_menus(cx);
         cx.set_menus(menus);
+        cx.observe_global::<SettingsStore>(|cx| {
+            let menus = app_menus(cx);
+            cx.set_menus(menus);
+        })
+        .detach();
 
         if let Some(mut crash_handler) = crash_handler {
             let crash_handler2 = block_on(poll_once(&mut crash_handler));

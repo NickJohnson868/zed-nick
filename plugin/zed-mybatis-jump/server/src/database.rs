@@ -7,7 +7,6 @@ use std::{
     path::{Path, PathBuf},
     time::{Duration, SystemTime},
 };
-use url::Url;
 
 #[derive(Clone, Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
@@ -19,8 +18,6 @@ pub struct Settings {
 #[derive(Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Connection {
-    pub application_yaml: Option<PathBuf>,
-    pub yaml_section: String,
     pub host: String,
     pub port: u16,
     pub database: String,
@@ -35,8 +32,6 @@ pub struct Connection {
 impl Default for Connection {
     fn default() -> Self {
         Self {
-            application_yaml: None,
-            yaml_section: "spring.datasource".into(),
             host: "127.0.0.1".into(),
             port: 5432,
             database: String::new(),
@@ -55,7 +50,7 @@ pub struct Selected {
     pub name: String,
     pub root: PathBuf,
     pub connection: Connection,
-    pub stamp: (Option<SystemTime>, Option<SystemTime>),
+    pub stamp: Option<SystemTime>,
 }
 
 pub fn selected(root: &Path) -> Result<Option<Selected>, String> {
@@ -66,7 +61,7 @@ pub fn selected(root: &Path) -> Result<Option<Selected>, String> {
     let text =
         fs::read_to_string(&path).map_err(|_| "无法读取 .zed/mybatis-jump.json".to_owned())?;
     let settings: Settings = serde_json::from_str(&text)
-        .map_err(|_| "MyBatis 连接配置 JSON 无效，请检查配置字段和格式".to_owned())?;
+        .map_err(|_| "MyBatis 连接配置无效：请显式配置 host、port、database、user 和 password_env，不再支持 application_yaml 或 yaml_section".to_owned())?;
     if settings.active_connection.is_empty() {
         return Ok(None);
     }
@@ -75,18 +70,11 @@ pub fn selected(root: &Path) -> Result<Option<Selected>, String> {
         .get(&settings.active_connection)
         .ok_or("active_connection 没有对应的连接配置")?
         .clone();
-    let yaml_stamp = connection
-        .application_yaml
-        .as_ref()
-        .and_then(|p| fs::metadata(root.join(p)).ok()?.modified().ok());
     Ok(Some(Selected {
         name: settings.active_connection,
         root: root.into(),
         connection,
-        stamp: (
-            fs::metadata(path).ok().and_then(|m| m.modified().ok()),
-            yaml_stamp,
-        ),
+        stamp: fs::metadata(path).ok().and_then(|m| m.modified().ok()),
     }))
 }
 
@@ -96,74 +84,24 @@ pub struct Catalog {
     pub search_path: Vec<String>,
 }
 
-fn expand(value: &str) -> Result<String, String> {
-    if let Some(value) = value.strip_prefix("${").and_then(|v| v.strip_suffix('}')) {
-        let (key, fallback) = value
-            .split_once(':')
-            .map_or((value, None), |(k, v)| (k, Some(v)));
-        std::env::var(key)
-            .ok()
-            .or_else(|| fallback.map(str::to_owned))
-            .ok_or_else(|| format!("缺少环境变量 {key}"))
-    } else {
-        Ok(value.into())
-    }
-}
-
 pub fn connect(selected: &Selected) -> Result<Client, String> {
     let source = &selected.connection;
     let mut config = postgres::Config::new();
-    let mut host = source.host.clone();
-    let mut port = source.port;
-    let mut database = source.database.clone();
-    let mut user = source.user.clone();
     let mut password = None;
-    let mut jdbc_search_path = Vec::new();
-    if let Some(path) = &source.application_yaml {
-        let text = fs::read_to_string(selected.root.join(path))
-            .map_err(|_| "无法读取指定的本地 dev YAML")?;
-        let yaml: serde_yaml_ng::Value =
-            serde_yaml_ng::from_str(&text).map_err(|_| "无法解析 dev YAML")?;
-        let mut section = &yaml;
-        for part in source.yaml_section.split('.') {
-            section = &section[part];
-        }
-        let get = |key: &str| -> Result<String, String> {
-            let value = section[key]
-                .as_str()
-                .ok_or_else(|| format!("dev YAML 数据源缺少 {key}"))?;
-            expand(value)
-        };
-        let jdbc = get("url")?;
-        let jdbc = jdbc
-            .strip_prefix("jdbc:")
-            .ok_or("只支持 PostgreSQL JDBC URL")?;
-        let url = Url::parse(jdbc).map_err(|_| "dev YAML 中的 JDBC URL 无效")?;
-        if url.scheme() != "postgresql" {
-            return Err("当前数据源不是 PostgreSQL".into());
-        }
-        host = url.host_str().ok_or("JDBC URL 缺少主机")?.into();
-        port = url.port().unwrap_or(5432);
-        database = url.path().trim_start_matches('/').into();
-        if let Some((_, path)) = url.query_pairs().find(|(key, _)| key == "currentSchema") {
-            jdbc_search_path = path.split(',').map(str::to_owned).collect();
-        }
-        user = get("username")?;
-        if section["password"].is_string() {
-            password = Some(get("password")?);
-        }
-    }
     if let Some(key) = &source.password_env {
         password = Some(std::env::var(key).map_err(|_| format!("缺少密码环境变量 {key}"))?);
     }
-    if database.is_empty() || user.is_empty() {
-        return Err("连接配置缺少 database 或 user".into());
+    if source.host.trim().is_empty()
+        || source.database.trim().is_empty()
+        || source.user.trim().is_empty()
+    {
+        return Err("连接配置缺少 host、database 或 user".into());
     }
     config
-        .host(&host)
-        .port(port)
-        .dbname(&database)
-        .user(&user)
+        .host(&source.host)
+        .port(source.port)
+        .dbname(&source.database)
+        .user(&source.user)
         .application_name("zed-mybatis-jump")
         .connect_timeout(Duration::from_secs(3))
         .options(
@@ -181,13 +119,9 @@ pub fn connect(selected: &Selected) -> Result<Client, String> {
     config.ssl_mode(mode);
     let tls = native_tls::TlsConnector::new().map_err(|_| "无法初始化 TLS")?;
     let mut client = config.connect(MakeTlsConnector::new(tls)).map_err(
-        |_| "PostgreSQL 连接失败，请检查本地 dev 数据源、环境变量和服务状态（未输出凭据）",
+        |_| "PostgreSQL 连接失败，请检查用户配置的连接参数、密码环境变量和服务状态（未输出凭据）",
     )?;
-    let search_path = if source.search_path.is_empty() {
-        &jdbc_search_path
-    } else {
-        &source.search_path
-    };
+    let search_path = &source.search_path;
     if !search_path.is_empty() {
         let path = search_path
             .iter()
@@ -242,11 +176,37 @@ pub fn catalog(client: &mut Client, connection: &Connection) -> Result<Catalog, 
 mod tests {
     use super::*;
     #[test]
-    fn spring_defaults_do_not_split_jdbc_colons() {
+    fn connection_uses_explicit_user_parameters() {
+        let settings: Settings = serde_json::from_str(
+            r#"{
+            "active_connection":"local",
+            "connections":{"local":{"host":"localhost","port":5544,
+                "database":"example","user":"example_user","password_env":"MYBATIS_PG_PASSWORD",
+                "search_path":["public"]}}
+        }"#,
+        )
+        .expect("valid explicit connection");
+        let connection = settings
+            .connections
+            .get("local")
+            .expect("configured connection");
+        assert_eq!(connection.host, "localhost");
+        assert_eq!(connection.port, 5544);
+        assert_eq!(connection.search_path, ["public"]);
         assert_eq!(
-            expand("${ZED_MYBATIS_TEST_NOT_SET:jdbc:postgresql://localhost/db}").unwrap(),
-            "jdbc:postgresql://localhost/db"
+            connection.password_env.as_deref(),
+            Some("MYBATIS_PG_PASSWORD")
         );
-        assert!(expand("${ZED_MYBATIS_TEST_NOT_SET}").is_err());
+    }
+
+    #[test]
+    fn yaml_and_inline_password_are_rejected() {
+        for input in [
+            r#"{"application_yaml":"application-dev.yaml"}"#,
+            r#"{"yaml_section":"spring.datasource"}"#,
+            r#"{"password":"not-a-real-password"}"#,
+        ] {
+            assert!(serde_json::from_str::<Connection>(input).is_err());
+        }
     }
 }

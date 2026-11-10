@@ -38,12 +38,12 @@ def check_install(root):
     destination = root / "extensions/installed/native-test"
     module.copy_runtime(source, destination)
     assert (destination / "extension.toml").is_file()
-    for windows, expected in [(True, "powershell.exe"), (False, "/bin/sh")]:
+    for windows, expected in [(True, "cmd.exe"), (False, "/bin/sh")]:
         variant = root / ("java-windows" if windows else "java-unix")
         module.java_tasks(variant, windows=windows)
         tasks = json.loads((variant / "languages/java/tasks.json").read_text(encoding="utf-8"))
         assert len(tasks) == 5
-        assert all(task["shell"]["with_arguments"]["program"] == expected for task in tasks)
+        assert all(task["shell"]["program"] == expected for task in tasks)
         assert all("$CMD clean " not in task["command"] for task in tasks)
     if os.name != "nt":
         linked = root / "linked"

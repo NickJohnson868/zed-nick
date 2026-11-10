@@ -60,7 +60,7 @@ pub(crate) fn commit_context_menu(
         context_menu
             .context(focus_handle)
             .header(header)
-            .entry("View Diff", Some(OpenCommitView.boxed_clone()), {
+            .entry(i18n::t!("View Diff"), Some(OpenCommitView.boxed_clone()), {
                 let repository = repository.clone();
                 let workspace = workspace.clone();
                 move |window, cx| {
@@ -78,7 +78,7 @@ pub(crate) fn commit_context_menu(
                 }
             })
             .entry(
-                "Copy SHA",
+                i18n::t!("Copy SHA"),
                 Some(CopyCommitSha.boxed_clone()),
                 move |_window, cx| {
                     cx.write_to_clipboard(ClipboardItem::new_string(sha.to_string()));
@@ -144,7 +144,7 @@ pub(crate) fn commit_context_menu(
                 }
             })
             .when(source == CommitContextMenuSource::GitPanel, |menu| {
-                menu.entry("Show in Git Graph", None, move |window, cx| {
+                menu.entry(i18n::t!("Show in Git Graph"), None, move |window, cx| {
                     window.dispatch_action(
                         Box::new(crate::git_graph::OpenAtCommit {
                             sha: sha.to_string(),

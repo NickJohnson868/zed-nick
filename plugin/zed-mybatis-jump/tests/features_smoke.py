@@ -1,7 +1,7 @@
 """Real stdio tests for XML completion, mapping and parameter diagnostics."""
 from pathlib import Path
-import json, tempfile, time, statistics
-from smoke import Client, ROOT, PROJECT_ROOT
+import json, tempfile, time, statistics, os, sys
+from smoke import Client, ROOT
 
 def point(source,offset):
     prefix=source[:offset]
@@ -74,9 +74,11 @@ public interface Mapper {
         print('Offline mapping/parameters/completion OK; warm property completion median_ms:',round(statistics.median(times),2))
     finally:client.close()
 
-    settings=json.loads((PROJECT_ROOT/'.zed/mybatis-jump.json').read_text(encoding='utf-8-sig'))
-    selected=settings['connections'][settings['active_connection']]
-    selected['application_yaml']=str(PROJECT_ROOT/selected['application_yaml'])
+    config_path=os.environ.get('MYBATIS_TEST_CONFIG')
+    if not config_path:
+        print('SKIP PostgreSQL tests: set MYBATIS_TEST_CONFIG to an explicit user connection config')
+        sys.exit(0)
+    settings=json.loads(Path(config_path).read_text(encoding='utf-8-sig'))
     (root/'.zed').mkdir()
     (root/'.zed/mybatis-jump.json').write_text(json.dumps(settings),encoding='utf-8')
     source='''<mapper namespace="demo.Mapper">

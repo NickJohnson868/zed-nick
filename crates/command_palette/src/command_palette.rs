@@ -3,7 +3,7 @@ mod persistence;
 
 use std::{
     cmp::{self, Reverse},
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     sync::Arc,
     time::Duration,
 };
@@ -129,6 +129,7 @@ impl CommandPalette {
 
                 Some(Command {
                     name: SharedString::from(humanize_action_name(action.name())),
+                    localized_name: localized_action_name(action.name()).map(Into::into),
                     action,
                     usage: None,
                 })
@@ -211,6 +212,7 @@ pub struct CommandPaletteDelegate {
 
 struct Command {
     name: SharedString,
+    localized_name: Option<SharedString>,
     action: Box<dyn Action>,
     usage: Option<CommandUsage>,
 }
@@ -310,6 +312,7 @@ impl Clone for Command {
     fn clone(&self) -> Self {
         Self {
             name: self.name.clone(),
+            localized_name: self.localized_name.clone(),
             action: self.action.boxed_clone(),
             usage: self.usage,
         }
@@ -365,6 +368,7 @@ impl CommandPaletteDelegate {
             let string = SharedString::from(string);
             commands.push(Command {
                 name: string.clone(),
+                localized_name: None,
                 action,
                 usage: None,
             });
@@ -458,9 +462,9 @@ impl CommandPaletteDelegate {
             })
             .child(
                 ButtonLike::new(("remove-command-history", ix))
-                    .aria_label("Remove from Command History")
+                    .aria_label(i18n::t!("Remove from Command History"))
                     .tooltip(Tooltip::for_action_title(
-                        "Remove from Command History",
+                        i18n::t!("Remove from Command History"),
                         &RemoveSelected,
                     ))
                     .child(
@@ -521,7 +525,7 @@ impl PickerDelegate for CommandPaletteDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "Execute a command...".into()
+        i18n::t!("Execute a command...").as_str().into()
     }
 
     fn select_history(
@@ -609,13 +613,18 @@ impl PickerDelegate for CommandPaletteDelegate {
                 }
                 commands.sort_by_key(|command| (Reverse(command.usage), command.name.clone()));
 
-                let candidates = commands
-                    .iter()
-                    .enumerate()
-                    .map(|(ix, command)| StringMatchCandidate::new(ix, &command.name))
-                    .collect::<Vec<_>>();
+                let mut candidate_commands = Vec::new();
+                let mut candidates = Vec::new();
+                for (command_index, command) in commands.iter_mut().enumerate() {
+                    command.localized_name =
+                        localized_action_name(command.action.name()).map(Into::into);
+                    for name in std::iter::once(&command.name).chain(&command.localized_name) {
+                        candidates.push(StringMatchCandidate::new(candidates.len(), name));
+                        candidate_commands.push(command_index);
+                    }
+                }
 
-                let mut matches = fuzzy_nucleo::match_strings_async(
+                let matches = fuzzy_nucleo::match_strings_async(
                     &candidates,
                     &query,
                     fuzzy_nucleo::Case::Smart,
@@ -625,6 +634,15 @@ impl PickerDelegate for CommandPaletteDelegate {
                     executor,
                 )
                 .await;
+                let mut matched_commands = HashSet::new();
+                let mut matches = matches
+                    .into_iter()
+                    .filter_map(|mut matched| {
+                        let command_index = *candidate_commands.get(matched.candidate_id)?;
+                        matched.candidate_id = command_index;
+                        matched_commands.insert(command_index).then_some(matched)
+                    })
+                    .collect::<Vec<_>>();
 
                 let used_commands = commands
                     .iter()
@@ -770,6 +788,32 @@ impl PickerDelegate for CommandPaletteDelegate {
     ) -> Option<Self::ListItem> {
         let matching_command = self.matches.get(ix)?;
         let command = self.commands.get(matching_command.candidate_id)?;
+        let positions = matching_command.positions.clone();
+        let command_label = match &command.localized_name {
+            Some(localized_name) => {
+                let (localized_positions, english_positions) =
+                    if matching_command.string.as_ref() == localized_name.as_str() {
+                        (positions, Vec::new())
+                    } else {
+                        (Vec::new(), positions)
+                    };
+                h_flex()
+                    .min_w_0()
+                    .gap_2()
+                    .child(
+                        HighlightedLabel::new(localized_name.clone(), localized_positions)
+                            .truncate(),
+                    )
+                    .child(
+                        HighlightedLabel::new(command.name.clone(), english_positions)
+                            .color(Color::Muted)
+                            .size(LabelSize::Small)
+                            .truncate(),
+                    )
+                    .into_any_element()
+            }
+            None => HighlightedLabel::new(command.name.clone(), positions).into_any_element(),
+        };
 
         Some(
             ListItem::new(ix)
@@ -782,13 +826,7 @@ impl PickerDelegate for CommandPaletteDelegate {
                         .py_px()
                         .justify_between()
                         .gap_2()
-                        .child(
-                            HighlightedLabel::new(
-                                command.name.clone(),
-                                matching_command.positions.clone(),
-                            )
-                            .truncate(),
-                        )
+                        .child(command_label)
                         .child(
                             h_flex()
                                 .flex_shrink_0()
@@ -821,7 +859,7 @@ impl PickerDelegate for CommandPaletteDelegate {
 
         let focus_handle = &self.previous_focus_handle;
         let keybinding_buttons = if keybind.has_binding(window) {
-            Button::new("change", "Change Keybinding…")
+            Button::new("change", i18n::t!("Change Keybinding…"))
                 .key_binding(
                     KeyBinding::for_action_in(&menu::SecondaryConfirm, focus_handle, cx)
                         .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -830,7 +868,7 @@ impl PickerDelegate for CommandPaletteDelegate {
                     window.dispatch_action(menu::SecondaryConfirm.boxed_clone(), cx);
                 })
         } else {
-            Button::new("add", "Add Keybinding…")
+            Button::new("add", i18n::t!("Add Keybinding…"))
                 .key_binding(
                     KeyBinding::for_action_in(&menu::SecondaryConfirm, focus_handle, cx)
                         .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -850,7 +888,7 @@ impl PickerDelegate for CommandPaletteDelegate {
                 .border_color(cx.theme().colors().border_variant)
                 .child(keybinding_buttons)
                 .child(
-                    Button::new("run-action", "Run")
+                    Button::new("run-action", i18n::t!("Run"))
                         .key_binding(
                             KeyBinding::for_action_in(&menu::Confirm, &focus_handle, cx)
                                 .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -862,6 +900,15 @@ impl PickerDelegate for CommandPaletteDelegate {
                 .into_any(),
         )
     }
+}
+
+pub fn localized_action_name(name: &str) -> Option<String> {
+    let localized_name = i18n::action_name(name)?;
+    let (namespace, _) = name.rsplit_once("::")?;
+    let localized_namespace = i18n::action_namespace(namespace)
+        .map(|namespace| namespace.to_string())
+        .unwrap_or_else(|| humanize_action_name(namespace));
+    Some(format!("{localized_namespace}: {localized_name}"))
 }
 
 pub fn humanize_action_name(name: &str) -> String {
@@ -1378,6 +1425,7 @@ mod tests {
                 .enumerate()
                 .map(|(index, (name, action))| Command {
                     name: SharedString::from(name),
+                    localized_name: None,
                     action,
                     usage: (index < 2).then_some(CommandUsage {
                         last_invoked: 0,

@@ -67,7 +67,7 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
         view_items.push(MenuItem::separator());
     }
 
-    vec![
+    let mut menus = vec![
         Menu {
             name: "Zed Nick".into(),
             disabled: false,
@@ -338,5 +338,7 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
                 ),
             ],
         },
-    ]
+    ];
+    ui::localization::translate_menus(&mut menus);
+    menus
 }

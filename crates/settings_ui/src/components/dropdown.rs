@@ -93,34 +93,42 @@ impl RenderOnce for EnumVariantDropdown {
     fn render(self, window: &mut ui::Window, cx: &mut ui::App) -> impl gpui::IntoElement {
         let current_value_label = self.labels[self.selected_index];
 
-        let context_menu = window.use_keyed_state(current_value_label, cx, |window, cx| {
-            ContextMenu::new(window, cx, move |mut menu, _, _| {
-                for (index, &label) in self.labels.iter().enumerate() {
-                    let on_change = self.on_change.clone();
-                    menu = menu.toggleable_entry(
-                        if self.should_do_title_case {
-                            label.to_title_case()
-                        } else {
-                            label.to_string()
-                        },
-                        index == self.selected_index,
-                        IconPosition::End,
-                        None,
-                        move |window, cx| {
-                            on_change(index, window, cx);
-                        },
-                    );
-                }
-                menu
-            })
-        });
+        let context_menu = window.use_keyed_state(
+            format!(
+                "{}-{}",
+                current_value_label,
+                (i18n::language() == i18n::Language::SimplifiedChinese)
+            ),
+            cx,
+            |window, cx| {
+                ContextMenu::new(window, cx, move |mut menu, _, _| {
+                    for (index, &label) in self.labels.iter().enumerate() {
+                        let on_change = self.on_change.clone();
+                        menu = menu.toggleable_entry(
+                            if self.should_do_title_case {
+                                i18n::translate(&label.to_title_case())
+                            } else {
+                                i18n::translate(label)
+                            },
+                            index == self.selected_index,
+                            IconPosition::End,
+                            None,
+                            move |window, cx| {
+                                on_change(index, window, cx);
+                            },
+                        );
+                    }
+                    menu
+                })
+            },
+        );
 
         DropdownMenu::new(
             self.id,
             if self.should_do_title_case {
-                current_value_label.to_title_case()
+                i18n::translate(&current_value_label.to_title_case())
             } else {
-                current_value_label.to_string()
+                i18n::translate(current_value_label)
             },
             context_menu,
         )

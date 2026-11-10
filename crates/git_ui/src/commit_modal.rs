@@ -454,7 +454,11 @@ impl CommitModal {
                             .layer(ElevationIndex::ModalSurface)
                             .size(ButtonSize::Compact)
                             .disabled(!can_commit)
-                            .child(Label::new(commit_label).size(LabelSize::Small).mr_0p5())
+                            .child(
+                                Label::new(i18n::translate(commit_label))
+                                    .size(LabelSize::Small)
+                                    .mr_0p5(),
+                            )
                             .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
                                 telemetry::event!("Git Committed", source = "Git Modal");
                                 this.git_panel.update(cx, |git_panel, cx| {
@@ -468,7 +472,7 @@ impl CommitModal {
                                 move |_window, cx| {
                                     if can_commit {
                                         Tooltip::with_meta_in(
-                                            tooltip,
+                                            i18n::translate(tooltip),
                                             Some(&git::Commit),
                                             format!(
                                                 "git commit{}{}{}",
@@ -488,7 +492,7 @@ impl CommitModal {
                                             cx,
                                         )
                                     } else {
-                                        Tooltip::simple(tooltip, cx)
+                                        Tooltip::simple(i18n::translate(tooltip), cx)
                                     }
                                 }
                             }),

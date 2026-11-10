@@ -32,7 +32,8 @@ impl TitleBar {
         self.run_controls.error = None;
         if TrustedWorktrees::has_restricted_worktrees(&self.project.read(cx).worktree_store(), cx) {
             self.run_controls.entries.clear();
-            self.run_controls.error = Some("信任项目后才能加载运行入口扩展".into());
+            self.run_controls.error =
+                Some(i18n::t!("Trust this project to load run entries").to_string());
             return;
         }
         let discovery = cx.background_spawn(async move { run_entries::discover(&root).await });
@@ -166,9 +167,9 @@ impl TitleBar {
             .map(|entry| entry.task.label.clone())
             .unwrap_or_else(|| {
                 if self.run_controls.scan.is_some() {
-                    "扫描启动入口…".into()
+                    i18n::t!("Scanning Run Entries…").to_string()
                 } else {
-                    "选择启动入口".into()
+                    i18n::t!("Select Run Entry").to_string()
                 }
             });
         let this = cx.entity().downgrade();
@@ -198,7 +199,7 @@ impl TitleBar {
                     root.and_then(|root| root.file_name())
                         .map(|name| name.to_string_lossy().into_owned())
                 }
-                .unwrap_or_else(|| "项目".into());
+                .unwrap_or_else(|| i18n::t!("Project").to_string());
                 (project, entry)
             })
             .collect();
@@ -215,7 +216,7 @@ impl TitleBar {
                 Some(ContextMenu::build(window, cx, |mut menu, window, cx| {
                     menu = menu
                         .end_slot_action(Box::new(menu::SecondaryConfirm))
-                        .header("项目启动入口");
+                        .header(i18n::t!("Project Run Entries"));
                     let mut previous_project = None;
                     for (project, entry) in &entries {
                         if previous_project != Some(project) {
@@ -260,7 +261,7 @@ impl TitleBar {
                                     .log_err();
                                 },
                                 IconName::ArrowUpRight,
-                                "定位入口代码".into(),
+                                i18n::t!("Open Entry Source"),
                                 move |window, cx| {
                                     source_title_bar
                                         .update(cx, |this, cx| {
@@ -283,7 +284,7 @@ impl TitleBar {
                     }
                     menu =
                         menu.separator()
-                            .entry("重新扫描入口 / 重载运行环境", None, {
+                            .entry(i18n::t!("Rescan Entries / Reload Runtime"), None, {
                                 let this = this.clone();
                                 move |_, cx| {
                                     this.update(cx, |this, cx| this.refresh_run_entries(cx))
@@ -291,7 +292,7 @@ impl TitleBar {
                                 }
                             });
                     menu.entry(
-                        "编辑运行环境（JDK / Python / 环境变量）",
+                        i18n::t!("Edit Runtime (JDK / Python / Environment Variables)"),
                         None,
                         {
                             let this = this.clone();
@@ -301,14 +302,22 @@ impl TitleBar {
                                         (&this.run_controls.root, this.workspace.upgrade())
                                     {
                                         let path = root.join(run_entries::CONFIG_PATH);
+                                        let root = root.clone();
                                         let task_workspace = workspace.clone();
                                         let task = cx.spawn_in(window, async move |_, cx| {
                                             let config_path = path.clone();
                                             cx.background_spawn(async move {
                                                 use std::io::Write as _;
                                                 if let Some(parent) = config_path.parent() { std::fs::create_dir_all(parent)?; }
-                                                let template = run_entries::config_template()?;
-                                                match std::fs::OpenOptions::new().write(true).create_new(true).open(config_path) {
+                                                let template = run_entries::config_template(&root)?;
+                                                let mut options = std::fs::OpenOptions::new();
+                                                options.write(true).create_new(true);
+                                                #[cfg(unix)]
+                                                {
+                                                    use std::os::unix::fs::OpenOptionsExt;
+                                                    options.mode(0o600);
+                                                }
+                                                match options.open(config_path) {
                                                     Ok(mut file) => file.write_all(template.as_bytes())?,
                                                     Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {},
                                                     Err(error) => return Err(error.into()),
@@ -329,7 +338,10 @@ impl TitleBar {
             });
         Some(
             h_flex()
+                .p_0p5()
                 .gap_1()
+                .rounded_md()
+                .bg(cx.theme().colors().element_background.opacity(0.5))
                 .child(selector)
                 .child(
                     IconButton::new(
@@ -344,9 +356,9 @@ impl TitleBar {
                     .icon_color(Color::Success)
                     .disabled(selected.is_none() || busy || restricted)
                     .tooltip(Tooltip::text(if running {
-                        "重新运行选中入口"
+                        i18n::translate_in_context("runner", "Rerun Selected Entry")
                     } else {
-                        "运行选中入口"
+                        i18n::translate_in_context("runner", "Run Selected Entry")
                     }))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         if let Some(entry) = selected.clone() {
@@ -358,7 +370,10 @@ impl TitleBar {
                     IconButton::new("debug-selected-entry", IconName::Debug)
                         .icon_size(IconSize::Small)
                         .disabled(debug_entry.is_none() || restricted || busy)
-                        .tooltip(Tooltip::text("调试选中入口"))
+                        .tooltip(Tooltip::text(i18n::translate_in_context(
+                            "runner",
+                            "Debug Selected Entry",
+                        )))
                         .on_click(cx.listener(move |this, _, window, cx| {
                             if let Some(entry) = debug_entry.clone() {
                                 this.debug_run_entry(entry, worktree_id, window, cx);
@@ -370,7 +385,10 @@ impl TitleBar {
                         .icon_size(IconSize::Small)
                         .icon_color(Color::Error)
                         .disabled(!running || busy)
-                        .tooltip(Tooltip::text("停止选中入口"))
+                        .tooltip(Tooltip::text(i18n::translate_in_context(
+                            "runner",
+                            "Stop Selected Entry",
+                        )))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             if let Some(tag) = &tag {
                                 this.project.update(cx, |project, cx| {
@@ -458,7 +476,10 @@ impl TitleBar {
                         }
                     }
                 }
-                anyhow::ensure!(stopped, "进程尚未停止，请先检查终端，再重新运行");
+                anyhow::ensure!(
+                    stopped,
+                    i18n::t!("Process is still running. Check the terminal before rerunning.")
+                );
                 anyhow::Ok(())
             }
             .await;
@@ -492,7 +513,8 @@ impl TitleBar {
             return;
         };
         if workspace.read(cx).debugger_provider().is_none() {
-            self.run_controls.error = Some("当前窗口未启用调试面板".into());
+            self.run_controls.error =
+                Some(i18n::t!("Debugger panel is not enabled in this window").to_string());
             cx.notify();
             return;
         }
@@ -500,7 +522,11 @@ impl TitleBar {
             .adapter(&scenario.adapter)
             .is_none()
         {
-            self.run_controls.error = Some(format!("尚未加载调试适配器：{}", scenario.adapter));
+            self.run_controls.error = Some(format!(
+                "{}: {}",
+                i18n::t!("Debug adapter not loaded"),
+                scenario.adapter
+            ));
             cx.notify();
             return;
         }

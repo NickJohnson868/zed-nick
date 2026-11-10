@@ -6,7 +6,8 @@ use std::sync::Arc;
 
 pub use decorated_icon::*;
 use gpui::{
-    AnimationElement, AnyElement, Hsla, ImgResourceLoader, IntoElement, Rems, Resource,
+    AnimationElement, AnyElement, Asset, AssetLogger, DevicePixels, Hsla, ImageCacheError,
+    ImgResourceLoader, IntoElement, Rems, RenderImage, Resource, Size, SvgRenderer, SvgSize,
     Transformation, img, svg,
 };
 pub use icon_decoration::*;
@@ -195,7 +196,10 @@ impl Icon {
 
     pub fn preload(&self, cx: &mut App) {
         if let IconSource::External(path) = &self.source {
-            drop(cx.fetch_asset::<ImgResourceLoader>(&Resource::Path(path.clone())));
+            // SVGs need the window's device size; preload only raster formats here.
+            if !is_svg(path) {
+                drop(cx.fetch_asset::<ImgResourceLoader>(&Resource::Path(path.clone())));
+            }
         }
     }
 
@@ -234,12 +238,63 @@ impl Transformable for Icon {
     }
 }
 
+fn is_svg(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("svg"))
+}
+
+fn rasterize_icon(
+    renderer: &SvgRenderer,
+    bytes: &[u8],
+    size: DevicePixels,
+) -> Result<Arc<RenderImage>, ImageCacheError> {
+    let svg = renderer.parse_svg(bytes)?;
+    Ok(renderer.render_parsed(
+        &svg,
+        SvgSize::Size(Size {
+            width: size,
+            height: size,
+        }),
+    )?)
+}
+
+// Cache by device size: using img(path) retains the SVG's intrinsic-sized bitmap.
+enum ExternalSvgIcon {}
+
+impl Asset for ExternalSvgIcon {
+    type Source = (Arc<Path>, DevicePixels);
+    type Output = Result<Arc<RenderImage>, ImageCacheError>;
+
+    fn load(
+        (path, size): Self::Source,
+        cx: &mut App,
+    ) -> impl Future<Output = Self::Output> + Send + 'static {
+        let renderer = cx.svg_renderer();
+        async move { rasterize_icon(&renderer, &std::fs::read(path.as_ref())?, size) }
+    }
+}
+
 impl RenderOnce for Icon {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let color = self.color.color(cx);
         let svg = match self.source {
             IconSource::Embedded(path) => svg().path(path),
             IconSource::ExternalSvg(path) => svg().external_path(path),
+            IconSource::External(path) if is_svg(&path) => {
+                let device_size = DevicePixels(
+                    (f32::from(self.size.to_pixels(window.rem_size())) * window.scale_factor())
+                        .ceil()
+                        .max(1.) as i32,
+                );
+                return img(move |window: &mut Window, cx: &mut App| {
+                    window
+                        .use_asset::<AssetLogger<ExternalSvgIcon>>(&(path.clone(), device_size), cx)
+                })
+                .size(self.size)
+                .flex_none()
+                .text_color(color)
+                .into_any_element();
+            }
             IconSource::External(path) => {
                 return img(path)
                     .size(self.size)
@@ -374,5 +429,26 @@ impl Component for Icon {
                 )]),
             ])
             .into_any_element()
+    }
+}
+
+#[cfg(test)]
+mod external_icon_tests {
+    use super::*;
+
+    #[test]
+    fn external_svg_uses_display_size_and_keeps_aspect_ratio() -> Result<(), ImageCacheError> {
+        let renderer = SvgRenderer::new(Arc::new(()));
+        let bytes = br#"<svg xmlns="http://www.w3.org/2000/svg" width="960" height="480"><rect width="960" height="480" fill="red"/></svg>"#;
+        for size in [16, 24, 32] {
+            let image = rasterize_icon(&renderer, bytes, DevicePixels(size))?;
+            assert_eq!(
+                image.size(0),
+                Size::new(DevicePixels(size), DevicePixels(size / 2))
+            );
+        }
+        assert!(is_svg(Path::new("file.SVG")));
+        assert!(!is_svg(Path::new("file.png")));
+        Ok(())
     }
 }

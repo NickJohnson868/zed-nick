@@ -143,7 +143,12 @@ impl ApplicationMenu {
                         checked,
                         disabled,
                         ..
-                    } => menu.action_checked_with_disabled(name, action, checked, disabled),
+                    } => menu.action_checked_with_disabled(
+                        i18n::translate(&name),
+                        action,
+                        checked,
+                        disabled,
+                    ),
                     OwnedMenuItem::Submenu(submenu) => {
                         submenu
                             .items
@@ -156,8 +161,12 @@ impl ApplicationMenu {
                                     checked,
                                     disabled,
                                     ..
-                                } => menu
-                                    .action_checked_with_disabled(name, action, checked, disabled),
+                                } => menu.action_checked_with_disabled(
+                                    i18n::translate(&name),
+                                    action,
+                                    checked,
+                                    disabled,
+                                ),
                                 OwnedMenuItem::Submenu(_) => menu,
                                 OwnedMenuItem::SystemMenu(_) => {
                                     // A system menu doesn't make sense in this context, so ignore it
@@ -196,8 +205,8 @@ impl ApplicationMenu {
                         .style(ButtonStyle::Subtle)
                         .icon_size(IconSize::Small)
                         .tab_index(0isize)
-                        .aria_label("Application menu"),
-                        Tooltip::text("Open Application Menu"),
+                        .aria_label(i18n::t!("Application menu")),
+                        Tooltip::text(i18n::t!("Open Application Menu")),
                     )
                     .with_handle(handle),
             )
@@ -226,7 +235,7 @@ impl ApplicationMenu {
                     .trigger(
                         Button::new(
                             SharedString::from(format!("{}-menu-trigger", menu_name)),
-                            menu_name,
+                            i18n::translate(&menu_name),
                         )
                         .style(ButtonStyle::Subtle)
                         .label_size(LabelSize::Small)
@@ -256,7 +265,7 @@ impl ApplicationMenu {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) {
-        self.pending_menu_open = Some(action.0.clone());
+        self.pending_menu_open = Some(i18n::translate(&action.0).to_string());
     }
 
     #[cfg(not(target_os = "macos"))]

@@ -16,7 +16,7 @@ use project::Project;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use settings::{RegisterSetting, Settings, SettingsContent, TabSwitcherSettingsContent};
-use std::{cmp::Reverse, sync::Arc};
+use std::{cmp::Reverse, sync::Arc, time::Duration};
 use ui::{
     DecoratedIcon, IconDecoration, IconDecorationKind, ListItem, ListItemSpacing, Tooltip,
     prelude::*,
@@ -43,6 +43,7 @@ impl Settings for TabSwitcherSettings {
 }
 
 const PANEL_WIDTH_REMS: f32 = 28.;
+const POPOVER_DELAY: Duration = Duration::from_millis(300);
 
 /// Toggles the tab switcher interface.
 #[derive(PartialEq, Clone, Deserialize, JsonSchema, Default, Action)]
@@ -68,6 +69,8 @@ actions!(
 pub struct TabSwitcher {
     picker: Entity<Picker<TabSwitcherDelegate>>,
     init_modifiers: Option<Modifiers>,
+    visible: bool,
+    _show_task: Option<Task<()>>,
 }
 
 impl ModalView for TabSwitcher {}
@@ -183,6 +186,17 @@ impl TabSwitcher {
         } else {
             window.modifiers().modified().then_some(window.modifiers())
         };
+        let delayed = init_modifiers.is_some();
+        let show_task = delayed.then(|| {
+            cx.spawn_in(window, async move |this, cx| {
+                cx.background_executor().timer(POPOVER_DELAY).await;
+                this.update_in(cx, |this, _, cx| {
+                    this.visible = true;
+                    cx.notify();
+                })
+                .log_err();
+            })
+        });
         Self {
             picker: cx.new(|cx| {
                 if is_global {
@@ -193,6 +207,8 @@ impl TabSwitcher {
                 .initial_width(rems(PANEL_WIDTH_REMS))
             }),
             init_modifiers,
+            visible: !delayed,
+            _show_task: show_task,
         }
     }
 
@@ -244,7 +260,11 @@ impl Render for TabSwitcher {
             .w(rems(PANEL_WIDTH_REMS))
             .on_modifiers_changed(cx.listener(Self::handle_modifiers_changed))
             .on_action(cx.listener(Self::handle_close_selected_item))
-            .child(self.picker.clone())
+            .when(self.visible, |this| this.child(self.picker.clone()))
+            .when(!self.visible, |this| {
+                // Keep the picker in the focus tree while waiting for modifier release.
+                this.child(div().size_0().overflow_hidden().child(self.picker.clone()))
+            })
     }
 }
 

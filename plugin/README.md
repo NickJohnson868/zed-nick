@@ -41,10 +41,11 @@ machine's system encoding. Use a JDK that supports the required characters.
 
 ## Build and install on the target machine
 
-Java gutter tasks are packaged for their target OS: Unix uses its built-in
-`/bin/sh`, and Windows uses its preinstalled Windows PowerShell 5.1. They do not
-require PowerShell 7 or Git Bash. These optional language tasks do not run an
-automatic `clean`; the toolbar and Maven panel use the native app path above.
+Java gutter tasks use the bundled native `java-lsp-proxy --java-task` executor.
+The shell host is system CMD on Windows and `/bin/sh` on macOS/Linux.
+No PowerShell or Git Bash is needed, and tasks do not automatically run `clean`.
+Runner environments, entries and scan rules share `.zed/zed-runner.json`.
+See [migration details](zed-runner/README.md). MyBatis retains its own config.
 
 Install Rust, the native C/C++ toolchain, Git and tar. The Java extension builder
 also needs the grammar build dependencies used by Zed's extension tooling.
@@ -93,7 +94,7 @@ Dependencies tree used by IDEA. Single-click selects a goal; double-click or
 the toolbar Run button executes it in Zed's task terminal. Refresh reads POM
 files without executing Maven. Project trust is required to execute a goal.
 
-The runner resolves `java.build_tool` in `.zed/run-environments.json` first,
+The runner resolves `java.build_tool` in `.zed/zed-runner.json` first,
 then the project's Maven wrapper, then the local Maven/MVND installation. Java
 environment variables are read from the same configuration. Skip tests, offline
 mode, reactor dependencies (`-pl` / `-am`) and explicit profiles are supported;
@@ -123,3 +124,36 @@ python plugin/zed-runner/tests/native_smoke.py
 
 These launch isolated fixture programs, not business applications. The GitHub
 workflow `Personal plugin platforms` runs the checks on Windows, macOS and Linux.
+
+## UI internationalization
+
+Zed Nick keeps its existing translation catalog and English default. The context
+lookup, named-placeholder formatting and pseudo-language approach are adapted
+from [Wu i18n](https://github.com/dstrml/wu/blob/12c1985/crates/i18n/src/i18n.rs)
+(GPL-3.0-or-later), maintained by the Wu contributors. The core lives in `crates/i18n`, with application settings and native menu integration in
+`crates/ui/src/localization.rs`. Translations in `assets/locales/zh-CN` are compiled into
+sorted static tables; no runtime translation file loading is required.
+Context entries use `context|English` JSON keys and fall back to ordinary
+translations, then English. Placeholder values are never interpreted recursively.
+Set `ZED_NICK_I18N_PSEUDO=1` before launching a development build to mark translated
+UI strings with brackets and find display sites that have not been integrated.
+This diagnostic mode does not change the saved language preference.
+
+The imported Wu catalogs and core retain their GPL-3.0-or-later license. Personal
+wording in `strings/zed-nick.json` takes priority during migration; imported
+string catalogs omit those keys. The build rejects duplicate keys across files.
+The command palette searches original action names and localized names, deduplicates
+matches, and keeps history/shortcuts tied to the original action identity. Settings
+and keymap schemas localize only descriptions, not property names or action IDs.
+Schema caches are refreshed when the interface language changes.
+
+Further Wu adaptations in the shared UI include delayed Ctrl+Tab presentation
+(300 ms when invoked with modifiers), display-size SVG icon rasterization, and
+saving the latest window bounds even when a project is open. These do not replace
+Zed Nick's tool rails, IDEA Islands theme, tab preview setting or UTF-8 runner fixes.
+
+The Git advanced menu includes Pull From, which selects a remote and one of its
+fetched branches. Cancelling either picker ends the operation. Project Panel
+Open Mode can select single-click opening or select-first/double-click opening;
+the default remains single_click. macOS CLI launches from desktop launchers no
+longer replace the worktree environment with the launcher's environment.

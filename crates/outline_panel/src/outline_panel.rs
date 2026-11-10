@@ -1820,9 +1820,12 @@ impl OutlinePanel {
                     menu.action("Fold Directory", Box::new(FoldDirectory))
                 })
                 .separator()
-                .action("Copy Path", Box::new(zed_actions::workspace::CopyPath))
                 .action(
-                    "Copy Relative Path",
+                    i18n::t!("Copy Path"),
+                    Box::new(zed_actions::workspace::CopyPath),
+                )
+                .action(
+                    i18n::t!("Copy Relative Path"),
                     Box::new(zed_actions::workspace::CopyRelativePath),
                 )
         });

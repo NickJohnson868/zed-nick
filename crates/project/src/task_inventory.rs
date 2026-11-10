@@ -1125,6 +1125,19 @@ impl ContextProvider for BasicContextProvider {
             task_variables.insert(VariableName::Language, language.name().to_string());
         }
 
+        let runner = paths::extensions_dir()
+            .join("work/java/bin")
+            .join(if cfg!(windows) {
+                "java-lsp-proxy.exe"
+            } else {
+                "java-lsp-proxy"
+            });
+        if runner.is_file() {
+            task_variables.insert(
+                VariableName::Custom("java_task_runner".into()),
+                runner.to_string_lossy().into_owned(),
+            );
+        }
         Task::ready(Ok(task_variables))
     }
 }

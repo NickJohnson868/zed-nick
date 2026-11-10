@@ -4,6 +4,7 @@ mod http;
 mod log;
 mod output;
 mod pending;
+mod tasks;
 
 use completions::{process_completions, sanitize_resolved_completion};
 use decompile::{DecompileCoordinator, Priority, RewriteJob, RewriteMode, SharedWriter};
@@ -11,10 +12,10 @@ use http::handle_http;
 use output::Output;
 use pending::PendingResponses;
 use proxy_common::{
-    contains_subslice, encode_lsp, file_uri_to_path, parse_lsp_content, raw_has_id,
-    spawn_parent_monitor, LspReader,
+    LspReader, contains_subslice, encode_lsp, file_uri_to_path, parse_lsp_content, raw_has_id,
+    spawn_parent_monitor,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     collections::{HashMap, HashSet},
     env, fs,
@@ -23,8 +24,8 @@ use std::{
     path::Path,
     process::{self, Command, Stdio},
     sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex, OnceLock,
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     thread,
 };
@@ -116,6 +117,18 @@ enum OutputRoute {
 }
 
 fn main() {
+    let task_arguments: Vec<String> = env::args().skip(1).collect();
+    if task_arguments.first().map(String::as_str) == Some("--java-task") {
+        let result = task_arguments
+            .get(1)
+            .ok_or_else(|| io::Error::other("Missing Java task mode"))
+            .and_then(|mode| tasks::run(mode));
+        if let Err(error) = result {
+            eprintln!("Java task failed: {error}");
+            process::exit(1);
+        }
+        return;
+    }
     let output = Output::start();
     log::init(output.clone());
 
@@ -1006,11 +1019,13 @@ mod tests {
             route_jdtls_message(&context, frame(&suppressed_response)),
             OutputRoute::Consumed
         );
-        assert!(!fixture
-            .suppressed
-            .lock()
-            .unwrap()
-            .contains(&json!("superseded-request")));
+        assert!(
+            !fixture
+                .suppressed
+                .lock()
+                .unwrap()
+                .contains(&json!("superseded-request"))
+        );
     }
 
     #[test]

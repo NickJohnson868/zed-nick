@@ -398,8 +398,11 @@ fn git_panel_context_menu(
             .when(include_copy_paths, |context_menu| {
                 context_menu
                     .separator()
-                    .action("Copy Path", CopyPath.boxed_clone())
-                    .action("Copy Relative Path", CopyRelativePath.boxed_clone())
+                    .action(i18n::t!("Copy Path"), CopyPath.boxed_clone())
+                    .action(
+                        i18n::t!("Copy Relative Path"),
+                        CopyRelativePath.boxed_clone(),
+                    )
             })
             .separator()
             .action_disabled_when(
@@ -432,7 +435,7 @@ fn git_panel_view_options_menu(
 
         context_menu
             .context(focus_handle.clone())
-            .header("View")
+            .header(i18n::t!("View"))
             .item({
                 let view_options_menu_state = view_options_menu_state.clone();
                 ContextMenuEntry::new("List")
@@ -463,7 +466,7 @@ fn git_panel_view_options_menu(
             })
             .when(!state.tree_view, |this| {
                 this.separator()
-                    .header("Sort By")
+                    .header(i18n::t!("Sort By"))
                     .item({
                         let view_options_menu_state = view_options_menu_state.clone();
                         ContextMenuEntry::new("Path")
@@ -495,7 +498,7 @@ fn git_panel_view_options_menu(
             })
             .when(show_group_by, |this| {
                 this.separator()
-                    .header("Group By")
+                    .header(i18n::t!("Group By"))
                     .item({
                         let view_options_menu_state = view_options_menu_state.clone();
                         ContextMenuEntry::new("None")
@@ -672,6 +675,16 @@ struct SerializedCommitMessage {
 enum GitPanelTab {
     Changes,
     History,
+}
+
+fn remote_branch_names(branches: &[Branch], remote_name: &str) -> Vec<SharedString> {
+    let prefix = format!("refs/remotes/{remote_name}/");
+    branches
+        .iter()
+        .filter_map(|branch| branch.ref_name.strip_prefix(prefix.as_str()))
+        .filter(|name| *name != "HEAD")
+        .map(|name| SharedString::from(name.to_string()))
+        .collect()
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -1451,7 +1464,7 @@ pub(crate) fn commit_message_editor(
             menu.context(focus_handle)
                 .action_disabled_when(!has_selection, "Cut", Box::new(editor::actions::Cut))
                 .action_disabled_when(!has_selection, "Copy", Box::new(editor::actions::Copy))
-                .action("Paste", Box::new(editor::actions::Paste))
+                .action(i18n::t!("Paste"), Box::new(editor::actions::Paste))
         }))
     });
     commit_editor
@@ -5173,7 +5186,13 @@ impl GitPanel {
         .detach();
     }
 
-    pub(crate) fn pull(&mut self, rebase: bool, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn pull(
+        &mut self,
+        rebase: bool,
+        select_branch: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if !self.can_push_and_pull(cx) {
             return;
         }
@@ -5188,7 +5207,8 @@ impl GitPanel {
         }
 
         telemetry::event!("Git Pulled");
-        let remote = self.get_remote(false, false, window, cx);
+        let remote = self.get_remote(select_branch, false, window, cx);
+        let workspace = self.workspace.clone();
         cx.spawn_in(window, async move |this, cx| {
             let _clear_pending_remote_operation = cx.on_drop(&this, |this, cx| {
                 this.clear_remote_operation(cx);
@@ -5207,14 +5227,59 @@ impl GitPanel {
                 }
             };
 
+            let branch_name = if select_branch {
+                let scan = match repo.update(cx, |repo, _| repo.branches()).await? {
+                    Ok(scan) => scan,
+                    Err(error) => {
+                        this.update(cx, |this, cx| this.show_error_toast("pull", error, cx))?;
+                        return Ok(());
+                    }
+                };
+                if let Some(error) = scan.error {
+                    this.update(cx, |this, cx| {
+                        this.show_error_toast("pull", anyhow::anyhow!(error.to_string()), cx)
+                    })?;
+                    return Ok(());
+                }
+                let branches = remote_branch_names(&scan.branches, &remote.name);
+                if branches.is_empty() {
+                    let message = i18n::t!(
+                        "No branches found on {remote}. Fetch from it first.",
+                        remote = remote.name
+                    );
+                    this.update(cx, |this, cx| {
+                        this.show_error_toast("pull", anyhow::anyhow!(message.to_string()), cx)
+                    })?;
+                    return Ok(());
+                }
+                let selection = cx
+                    .update(|window, cx| {
+                        picker_prompt::prompt(
+                            &i18n::t!("Pick which branch to pull from"),
+                            branches.clone(),
+                            workspace,
+                            window,
+                            cx,
+                        )
+                    })?
+                    .await;
+                let Some(branch) = selection.and_then(|index| branches.get(index).cloned()) else {
+                    return Ok(());
+                };
+                Some(branch)
+            } else {
+                branch
+                    .upstream
+                    .is_none()
+                    .then(|| branch.name().to_owned().into())
+            };
+            let message = match &branch_name {
+                Some(branch) => format!("git pull {} {branch}", remote.name),
+                None => format!("git pull {}", remote.name),
+            };
             let askpass = this.update_in(cx, |this, window, cx| {
-                this.askpass_delegate(format!("git pull {}", remote.name), window, cx)
+                this.askpass_delegate(message, window, cx)
             })?;
-
-            let branch_name = branch
-                .upstream
-                .is_none()
-                .then(|| branch.name().to_owned().into());
 
             let pull = repo.update(cx, |repo, cx| {
                 repo.pull(branch_name, remote.name.clone(), rebase, askpass, cx)
@@ -5515,7 +5580,11 @@ impl GitPanel {
             let selection = cx
                 .update(|window, cx| {
                     picker_prompt::prompt(
-                        "Pick which remote to push to",
+                        &if is_push {
+                            i18n::t!("Pick which remote to push to")
+                        } else {
+                            i18n::t!("Pick which remote to pull from")
+                        },
                         current_remotes.clone(),
                         workspace,
                         window,
@@ -7014,7 +7083,7 @@ impl GitPanel {
                     el.context(keybinding_target)
                 })
                 .item(
-                    ContextMenuEntry::new("Commit All Tracked Changes")
+                    ContextMenuEntry::new(i18n::t!("Commit All Tracked Changes"))
                         .disabled(!can_commit_tracked)
                         .handler({
                             let git_panel = git_panel.downgrade();
@@ -7040,7 +7109,7 @@ impl GitPanel {
                 .separator()
                 .when(has_previous_commit, |this| {
                     this.toggleable_entry(
-                        "Amend",
+                        i18n::t!("Amend"),
                         amend,
                         IconPosition::Start,
                         Some(Box::new(Amend)),
@@ -7057,14 +7126,14 @@ impl GitPanel {
                     )
                 })
                 .toggleable_entry(
-                    "Signoff",
+                    i18n::t!("Signoff"),
                     signoff,
                     IconPosition::Start,
                     Some(Box::new(Signoff)),
                     move |window, cx| window.dispatch_action(Box::new(Signoff), cx),
                 )
                 .item(
-                    ContextMenuEntry::new("Skip Hooks")
+                    ContextMenuEntry::new(i18n::t!("Skip Hooks"))
                         .toggleable(IconPosition::Start, skip_hooks)
                         .action(Box::new(SkipHooks))
                         .handler(move |window, cx| window.dispatch_action(Box::new(SkipHooks), cx))
@@ -7100,16 +7169,16 @@ impl GitPanel {
     pub fn commit_button_title(&self) -> &'static str {
         if self.amend_pending {
             if self.has_staged_changes() {
-                "Amend"
+                i18n::n!("Amend")
             } else if self.has_tracked_changes() {
-                "Amend Tracked"
+                i18n::n!("Amend Tracked")
             } else {
-                "Amend"
+                i18n::n!("Amend")
             }
         } else if self.has_staged_changes() {
-            "Commit"
+            i18n::n!("Commit")
         } else {
-            "Commit Tracked"
+            i18n::n!("Commit Tracked")
         }
     }
 
@@ -7293,7 +7362,7 @@ impl GitPanel {
                                                 .color(Color::Muted),
                                         )
                                         .child(
-                                            Label::new("View Diff")
+                                            Label::new(i18n::t!("View Diff"))
                                                 .size(LabelSize::Small)
                                                 .color(Color::Muted),
                                         )
@@ -7310,7 +7379,7 @@ impl GitPanel {
                                         Tooltip::simple("View Branch Diff", cx)
                                     } else {
                                         Tooltip::for_action_in(
-                                            "View Diff",
+                                            i18n::t!("View Diff"),
                                             &Diff,
                                             &focus_handle,
                                             cx,
@@ -7387,11 +7456,11 @@ impl GitPanel {
             self.pending_remote_operation,
             Some(RemoteOperationKind::Pull)
         ) {
-            "Pulling…".to_string()
+            i18n::t!("Pulling…").to_string()
         } else if behind > 0 {
-            format!("Pull {behind}")
+            format!("{} {behind}", i18n::t!("Pull"))
         } else {
-            "Pull".to_string()
+            i18n::t!("Pull").to_string()
         };
         let primary_title = match primary_action {
             GitPrimaryAction::Commit => if self.amend_pending {
@@ -7407,9 +7476,9 @@ impl GitPanel {
                 ) {
                     "Pushing…".to_string()
                 } else if ahead > 0 {
-                    format!("Push {ahead}")
+                    format!("{} {ahead}", i18n::t!("Push"))
                 } else {
-                    "Push".to_string()
+                    i18n::t!("Push").to_string()
                 }
             }
             GitPrimaryAction::CommitAndPush => if self.amend_pending {
@@ -7419,6 +7488,7 @@ impl GitPanel {
             }
             .to_string(),
         };
+        let primary_title = i18n::translate(&primary_title).to_string();
         let primary_disabled = match primary_action {
             GitPrimaryAction::Commit => !can_commit,
             GitPrimaryAction::Push => remote_disabled,
@@ -7450,7 +7520,7 @@ impl GitPanel {
                     let mut menu = menu
                         .context(focus.clone())
                         .fixed_width(rems(12.).into())
-                        .header("Primary action");
+                        .header(i18n::t!("Primary action"));
                     for (label, action, icon) in [
                         ("Commit", GitPrimaryAction::Commit, IconName::GitCommit),
                         ("Push", GitPrimaryAction::Push, IconName::ArrowUp),
@@ -7462,7 +7532,7 @@ impl GitPanel {
                     ] {
                         let panel = panel.clone();
                         menu = menu.item(
-                            ContextMenuEntry::new(label)
+                            ContextMenuEntry::new(i18n::translate(label))
                                 .icon(icon)
                                 .toggle(IconPosition::End, primary_action == action)
                                 .handler(move |_, cx| {
@@ -7476,20 +7546,21 @@ impl GitPanel {
                     }
                     menu.separator()
                         .submenu_with_icon(
-                            "Commit options",
+                            i18n::t!("Commit options"),
                             IconName::GitCommit,
                             commit_options_menu.clone(),
                         )
-                        .submenu_with_icon("More Git actions", IconName::Ellipsis, {
+                        .submenu_with_icon(i18n::t!("More Git actions"), IconName::Ellipsis, {
                             let focus = focus.clone();
                             move |menu, _, _| {
                                 menu.context(focus.clone())
-                                    .action("Fetch", Box::new(git::Fetch))
-                                    .action("Fetch From…", Box::new(git::FetchFrom))
-                                    .action("Pull with Rebase", Box::new(git::PullRebase))
+                                    .action(i18n::t!("Fetch"), Box::new(git::Fetch))
+                                    .action(i18n::t!("Fetch From…"), Box::new(git::FetchFrom))
+                                    .action(i18n::t!("Pull From…"), Box::new(git::PullFrom))
+                                    .action(i18n::t!("Pull with Rebase"), Box::new(git::PullRebase))
                                     .separator()
-                                    .action("Push To…", Box::new(git::PushTo))
-                                    .action("Force Push…", Box::new(git::ForcePush))
+                                    .action(i18n::t!("Push To…"), Box::new(git::PushTo))
+                                    .action(i18n::t!("Force Push…"), Box::new(git::ForcePush))
                             }
                         })
                 }))
@@ -7511,9 +7582,11 @@ impl GitPanel {
                                 .color(Color::Muted),
                         )
                         .child(Label::new(pull_title).size(LabelSize::Small))
-                        .tooltip(Tooltip::text("Pull changes from remote"))
+                        .tooltip(Tooltip::text(i18n::translate("Pull changes from remote")))
                         .disabled(remote_disabled)
-                        .on_click(cx.listener(|this, _, window, cx| this.pull(false, window, cx))),
+                        .on_click(
+                            cx.listener(|this, _, window, cx| this.pull(false, false, window, cx)),
+                        ),
                 )
                 .child(
                     SplitButton::new(
@@ -7531,7 +7604,7 @@ impl GitPanel {
                             )
                             .disabled(primary_disabled)
                             .child(Label::new(primary_title).size(LabelSize::Small))
-                            .tooltip(Tooltip::text(primary_tooltip))
+                            .tooltip(Tooltip::text(i18n::translate(primary_tooltip)))
                             .on_click(cx.listener(
                                 move |this, _, window, cx| match primary_action {
                                     GitPrimaryAction::Commit => {
@@ -7836,7 +7909,7 @@ impl GitPanel {
                     ),
             )
             .child(
-                Button::new("cancel", "Cancel")
+                Button::new("cancel", i18n::t!("Cancel"))
                     .label_size(LabelSize::Small)
                     .layer(ElevationIndex::ModalSurface)
                     .on_click(cx.listener(|this, _, _, cx| this.set_amend_pending(false, cx))),
@@ -7912,7 +7985,7 @@ impl GitPanel {
                                     .icon_size(IconSize::Small)
                                     .tooltip(move |_window, cx| {
                                         Tooltip::with_meta(
-                                            "Uncommit",
+                                            i18n::t!("Uncommit"),
                                             Some(&git::Uncommit),
                                             if has_unstaged {
                                                 "git reset HEAD^ --soft"
@@ -8007,7 +8080,7 @@ impl GitPanel {
                 ElementId::Name("changes-tab".into()),
                 active_tab == GitPanelTab::Changes,
                 true,
-                "Changes".into(),
+                i18n::t!("Changes"),
                 GitPanelTab::Changes,
                 ActivateChangesTab.boxed_clone(),
             ))
@@ -8020,7 +8093,7 @@ impl GitPanel {
                 ElementId::Name("history-tab".into()),
                 active_tab != GitPanelTab::Changes,
                 false,
-                "History".into(),
+                i18n::t!("History"),
                 GitPanelTab::History,
                 ActivateHistoryTab.boxed_clone(),
             ))
@@ -9215,8 +9288,11 @@ impl GitPanel {
                 .action(stage_title, ToggleStaged.boxed_clone())
                 .action(restore_title, RestoreFile::default().boxed_clone())
                 .separator()
-                .action("Unstaged Changes", ViewUnstagedChanges.boxed_clone())
-                .action("Staged Changes", ViewStagedChanges.boxed_clone())
+                .action(
+                    i18n::t!("Unstaged Changes"),
+                    ViewUnstagedChanges.boxed_clone(),
+                )
+                .action(i18n::t!("Staged Changes"), ViewStagedChanges.boxed_clone())
                 .separator()
                 .action(titles.copy_path, CopyPath.boxed_clone())
                 .action(titles.copy_relative_path, CopyRelativePath.boxed_clone())
@@ -10108,20 +10184,23 @@ impl Render for GenerateCommitMessageConfigurationTooltip {
                     h_flex()
                         .gap_1()
                         .child(
-                            Button::new("configure-commit-message-provider", "Configure Provider")
-                                .style(ButtonStyle::Filled)
-                                .layer(ElevationIndex::ModalSurface)
-                                .label_size(LabelSize::Small)
-                                .on_click(|_, window, cx| {
-                                    window.dispatch_action(
-                                        zed_actions::OpenSettingsAt {
-                                            path: "llm_providers".to_string(),
-                                            target: None,
-                                        }
-                                        .boxed_clone(),
-                                        cx,
-                                    );
-                                }),
+                            Button::new(
+                                "configure-commit-message-provider",
+                                i18n::t!("Configure Provider"),
+                            )
+                            .style(ButtonStyle::Filled)
+                            .layer(ElevationIndex::ModalSurface)
+                            .label_size(LabelSize::Small)
+                            .on_click(|_, window, cx| {
+                                window.dispatch_action(
+                                    zed_actions::OpenSettingsAt {
+                                        path: "llm_providers".to_string(),
+                                        target: None,
+                                    }
+                                    .boxed_clone(),
+                                    cx,
+                                );
+                            }),
                         )
                         .child(
                             Button::new("llm-provider-docs", "See Docs")
@@ -11290,6 +11369,44 @@ mod tests {
                 serde_json::from_str(&serde_json::to_string(&panel).unwrap()).unwrap();
             assert_eq!(restored.primary_action(), action);
         }
+    }
+
+    #[gpui::test]
+    async fn test_cancelling_picker_prompt_resolves_to_none(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.background_executor.clone());
+        fs.insert_tree(path!("/project"), json!({})).await;
+        let project = Project::test(fs, [Path::new(path!("/project"))], cx).await;
+        let window_handle =
+            cx.add_window(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace = window_handle
+            .read_with(cx, |mw, _| mw.workspace().clone())
+            .unwrap();
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+
+        let selection = workspace.update_in(cx, |workspace, window, cx| {
+            picker_prompt::prompt(
+                "Pick which remote to pull from",
+                vec!["origin".into(), "upstream".into()],
+                workspace.weak_handle(),
+                window,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+
+        let prompt = workspace
+            .update(cx, |workspace, cx| {
+                workspace.active_modal::<picker_prompt::PickerPrompt>(cx)
+            })
+            .expect("prompt should be open");
+        prompt.update_in(cx, |prompt, window, cx| {
+            prompt.picker.update(cx, |picker, cx| {
+                picker.cancel(&Default::default(), window, cx)
+            })
+        });
+
+        assert_eq!(selection.await, None);
     }
 
     #[gpui::test]
@@ -15331,6 +15448,37 @@ mod tests {
     }
 
     #[test]
+    fn test_remote_branch_names() {
+        let branches = [
+            "refs/heads/main",
+            "refs/remotes/origin/HEAD",
+            "refs/remotes/origin/main",
+            "refs/remotes/origin/feature/login",
+            "refs/remotes/origin-fork/main",
+            "refs/remotes/upstream/dev",
+        ]
+        .map(|ref_name| Branch {
+            is_head: false,
+            ref_name: ref_name.into(),
+            upstream: None,
+            most_recent_commit: None,
+        });
+
+        assert_eq!(
+            remote_branch_names(&branches, "origin"),
+            vec![
+                SharedString::from("main"),
+                SharedString::from("feature/login")
+            ]
+        );
+        assert_eq!(
+            remote_branch_names(&branches, "upstream"),
+            vec![SharedString::from("dev")]
+        );
+        assert!(remote_branch_names(&branches, "missing").is_empty());
+    }
+
+    #[test]
     fn test_commit_title_exceeds_limit() {
         // ASCII only
         let within_ascii = "abcde";
@@ -15723,7 +15871,7 @@ mod tests {
 
             let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
                 menu.context(panel.focus_handle.clone())
-                    .action("Stage All", StageAll.boxed_clone())
+                    .action(i18n::t!("Stage All"), StageAll.boxed_clone())
             });
 
             panel.set_context_menu(

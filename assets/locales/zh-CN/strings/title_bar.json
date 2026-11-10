@@ -1,0 +1,15 @@
+{
+  "Connected to: {host}": "已连接到：{host}",
+  "Connecting to: {host}": "正在连接到：{host}",
+  "Connection attempt to {host} missed. Retrying...": "{host} 未响应连接检测。正在重试…",
+  "Creating {name}…": "正在创建 {name}…",
+  "Currently Checked Out: {branch}": "当前签出：{branch}",
+  "Currently In Use: {worktree}": "当前使用：{worktree}",
+  "Detached HEAD: {branch}": "分离的 HEAD：{branch}",
+  "Disconnected from {host}": "已与 {host} 断开连接",
+  "Introducing:": "新功能：",
+  "Loading {name}…": "正在加载 {name}…",
+  "Lost connection to {host}. Reconnecting...": "与 {host} 的连接已断开。正在重新连接…",
+  "More Open Projects": "更多已打开的项目",
+  "Worktree": "工作树"
+}

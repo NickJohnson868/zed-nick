@@ -256,10 +256,16 @@ pub fn deploy_context_menu(
                     run_to_cursor || (evaluate_selection && has_selections),
                     |builder| builder.separator(),
                 )
-                .action("Go to Definition", Box::new(GoToDefinition::default()))
-                .action("Go to Declaration", Box::new(GoToDeclaration::default()))
                 .action(
-                    "Go to Type Definition",
+                    i18n::t!("Go to Definition"),
+                    Box::new(GoToDefinition::default()),
+                )
+                .action(
+                    i18n::t!("Go to Declaration"),
+                    Box::new(GoToDeclaration::default()),
+                )
+                .action(
+                    i18n::t!("Go to Type Definition"),
                     Box::new(GoToTypeDefinition::default()),
                 )
                 .action(
@@ -267,15 +273,15 @@ pub fn deploy_context_menu(
                     Box::new(GoToImplementation::default()),
                 )
                 .action(
-                    "Find All References",
+                    i18n::t!("Find All References"),
                     Box::new(FindAllReferences::default()),
                 )
                 .action(
-                    "Show Incoming Calls",
+                    i18n::t!("Show Incoming Calls"),
                     Box::new(zed_actions::ShowIncomingCalls),
                 )
                 .action(
-                    "Show Outgoing Calls",
+                    i18n::t!("Show Outgoing Calls"),
                     Box::new(zed_actions::ShowOutgoingCalls),
                 )
                 .separator()
@@ -295,10 +301,10 @@ pub fn deploy_context_menu(
                     this.action("Add to Agent Thread", Box::new(AddSelectionToThread))
                 })
                 .separator()
-                .action("Cut", Box::new(Cut))
-                .action("Copy", Box::new(Copy))
-                .action("Copy and Trim", Box::new(CopyAndTrim))
-                .action("Paste", Box::new(Paste))
+                .action(i18n::t!("Cut"), Box::new(Cut))
+                .action(i18n::t!("Copy"), Box::new(Copy))
+                .action(i18n::t!("Copy and Trim"), Box::new(CopyAndTrim))
+                .action(i18n::t!("Paste"), Box::new(Paste))
                 .separator()
                 .action_disabled_when(
                     !has_reveal_target,

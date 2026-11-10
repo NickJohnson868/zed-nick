@@ -79,12 +79,12 @@ def install_community(extensions, cache):
 def java_tasks(destination, windows=None):
     tasks = json.loads((HERE / "zed-java-fork/languages/java/tasks.json").read_text(encoding="utf-8"))
     use_windows = os.name == "nt" if windows is None else windows
-    if use_windows:
-        common = (HERE / "zed-java-fork/scripts/java_task_windows.ps1").read_text(encoding="utf-8")
-        for task, mode in zip(tasks, ("main", "method", "class", "all", "cache"), strict=True):
-            task["command"] = common + "\ntry { Invoke-JavaTask '" + mode + "'; exit 0 } catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }"
-            task["shell"] = {"with_arguments": {"program": "powershell.exe", "args": ["-NoLogo", "-NoProfile", "-NonInteractive"]}}
-            task["show_command"] = False
+    for task, mode in zip(tasks, ("main", "method", "class", "all", "cache"), strict=True):
+        command = f'"$ZED_CUSTOM_java_task_runner" --java-task {mode}'
+        task["command"] = command
+        task.pop("args", None)
+        task["shell"] = {"program": "cmd.exe" if use_windows else "/bin/sh"}
+        task["show_command"] = False
     directory = destination / "languages/java"
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "tasks.json").write_text(json.dumps(tasks, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -174,7 +174,7 @@ def main():
         java_tasks(stage / "java")
         runner = stage / "zed-runner"
         runner.mkdir()
-        for name in ["extension.toml", "run-provider.ps1", "config-template.ps1", "run-environments.template.json", "scripts"]:
+        for name in ["extension.toml", "zed-runner.example.json", "scripts"]:
             source = HERE / "zed-runner" / name
             if source.is_dir():
                 shutil.copytree(source, runner / name)

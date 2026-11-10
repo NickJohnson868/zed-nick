@@ -379,7 +379,7 @@ impl Render for LanguageServerPrompt {
                                                     )
                                                 } else {
                                                     Tooltip::with_meta(
-                                                        "Close",
+                                                        i18n::t!("Close"),
                                                         Some(&menu::Cancel),
                                                         "Suppress with shift-click",
                                                         cx,
@@ -1074,13 +1074,13 @@ pub mod simple_message_notification {
                                     )
                                 } else if show_suppress_button {
                                     Tooltip::with_meta(
-                                        "Close",
+                                        i18n::t!("Close"),
                                         Some(&menu::Cancel),
                                         "Shift-click to Suppress",
                                         cx,
                                     )
                                 } else {
-                                    Tooltip::for_action("Close", &menu::Cancel, cx)
+                                    Tooltip::for_action(i18n::t!("Close"), &menu::Cancel, cx)
                                 }
                             })
                             .on_click(cx.listener(move |_, _, _, cx| {

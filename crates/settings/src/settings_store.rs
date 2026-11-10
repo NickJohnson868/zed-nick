@@ -1335,19 +1335,27 @@ impl SettingsStore {
         }
 
         if !params.action_names.is_empty() {
+            let localized_documentation =
+                localized_action_documentation(params.action_documentation);
+            let action_documentation = localized_documentation
+                .iter()
+                .map(|(name, description)| (*name, description.as_str()))
+                .collect();
             replace_subschema::<CommandAliasTarget>(&mut generator, || {
                 CommandAliasTarget::build_schema(
                     params.action_names,
-                    params.action_documentation,
+                    &action_documentation,
                     params.deprecations,
                     params.deprecation_messages,
                 )
             });
         }
 
-        generator
+        let mut schema = generator
             .root_schema_for::<UserSettingsContent>()
-            .to_value()
+            .to_value();
+        localize_schema_descriptions(&mut schema);
+        schema
     }
 
     /// Generate JSON schema for project settings, including only settings valid
@@ -1361,9 +1369,11 @@ impl SettingsStore {
         ProjectSettingsContent::json_schema(&mut generator);
         Self::configure_schema_generator(&mut generator, params);
 
-        generator
+        let mut schema = generator
             .root_schema_for::<ProjectSettingsContent>()
-            .to_value()
+            .to_value();
+        localize_schema_descriptions(&mut schema);
+        schema
     }
 
     fn recompute_values(
@@ -1683,6 +1693,40 @@ impl<T: Settings> AnySettingValue for SettingValue<T> {
         self.local_values
             .retain(|(worktree_id, _, _)| *worktree_id != root_id);
     }
+}
+
+pub(crate) fn localize_schema_descriptions(schema: &mut Value) {
+    match schema {
+        Value::Object(object) => {
+            for (key, value) in object.iter_mut() {
+                match value {
+                    Value::String(description)
+                        if key == "description" || key == "markdownDescription" =>
+                    {
+                        if let Some(translation) = i18n::schema_description(description) {
+                            *description = translation.to_string();
+                        }
+                    }
+                    _ => localize_schema_descriptions(value),
+                }
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(localize_schema_descriptions),
+        _ => {}
+    }
+}
+
+pub(crate) fn localized_action_documentation<'a>(
+    documentation: &HashMap<&'a str, &'a str>,
+) -> HashMap<&'a str, SharedString> {
+    documentation
+        .iter()
+        .map(|(name, english)| {
+            let description = i18n::action_description(name)
+                .unwrap_or_else(|| SharedString::from(english.to_string()));
+            (*name, description)
+        })
+        .collect()
 }
 
 #[cfg(test)]

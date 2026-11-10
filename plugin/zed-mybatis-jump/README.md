@@ -85,10 +85,11 @@ Java 语法和 JDTLS 由原 Java 扩展提供；XML 语法由 XML 扩展提供�
 ## PostgreSQL 字段检查与补全（0.2）
 
 在项目 `.zed/mybatis-jump.json` 中配置连接，通过 `active_connection` 选择。
-完整模板见 `mybatis-jump.example.json`。当前 ai-manager-server 已配置 `local-dev`，
-引用本地 `application-dev.yaml` 的 `spring.datasource`；不复制或记录其中的密码。
-也支持直接配置主机、数据库、用户名并用 `password_env` 引用环境变量。
-YAML 的 `${ENV:default}`、JDBC `currentSchema` 和显式 `search_path` 均可识别。
+完整模板见 `mybatis-jump.example.json`。主机、端口、数据库、用户名和 schemas 由用户显式填写；
+密码通过 `password_env` 指定的环境变量提供，不在文件中保存明文密码。
+示例的 `active_connection` 默认为空；填写连接信息后，设置为连接名（如 `local`）才启用数据库功能。
+可通过 `search_path` 配置模式查找顺序。插件不再读取项目 YAML，
+不再支持 `application_yaml`、`yaml_section` 或 JDBC 配置导入。
 修改连接配置并保存后约 1 秒内重新验证已打开的 XML。
 
 - **红色波浪线**：不存在的字段、表/关系、语法错误及无法确定归属的同名字段。

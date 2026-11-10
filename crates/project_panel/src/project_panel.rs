@@ -1232,8 +1232,8 @@ impl ProjectPanel {
                                     .action("Compare Marked Files", Box::new(CompareMarkedFiles))
                             })
                             .separator()
-                            .action("Cut", Box::new(Cut))
-                            .action("Copy", Box::new(Copy))
+                            .action(i18n::t!("Cut"), Box::new(Cut))
+                            .action(i18n::t!("Copy"), Box::new(Copy))
                             .action("Duplicate", Box::new(Duplicate))
                             .action_disabled_when(!has_pasteable_content, "Paste", Box::new(Paste))
                             .when(!is_collab, |menu| {
@@ -1248,9 +1248,12 @@ impl ProjectPanel {
                                     .action("Download...", Box::new(DownloadFromRemote))
                             })
                             .separator()
-                            .action("Copy Path", Box::new(zed_actions::workspace::CopyPath))
                             .action(
-                                "Copy Relative Path",
+                                i18n::t!("Copy Path"),
+                                Box::new(zed_actions::workspace::CopyPath),
+                            )
+                            .action(
+                                i18n::t!("Copy Relative Path"),
                                 Box::new(zed_actions::workspace::CopyRelativePath),
                             )
                             .when(has_git_repo, |menu| {
@@ -1287,7 +1290,10 @@ impl ProjectPanel {
                                 menu.action("Trash", Box::new(Trash { skip_prompt: false }))
                             })
                             .when(!is_root, |menu| {
-                                menu.action("Delete", Box::new(Delete { skip_prompt: false }))
+                                menu.action(
+                                    i18n::t!("Delete"),
+                                    Box::new(Delete { skip_prompt: false }),
+                                )
                             })
                             .when(!is_collab && is_root, |menu| {
                                 menu.separator()
@@ -6638,6 +6644,17 @@ impl ProjectPanel {
                             project_panel.toggle_expand_all(entry_id, window, cx);
                         } else {
                             project_panel.toggle_expanded(entry_id, window, cx);
+                        }
+                    } else if ProjectPanelSettings::get_global(cx).open_mode
+                        == settings::ProjectPanelOpenMode::DoubleClick
+                    {
+                        if event.click_count() > 1 {
+                            project_panel.open_entry(entry_id, true, false, cx);
+                        } else {
+                            project_panel.marked_entries.clear();
+                            project_panel.selection = Some(selection);
+                            window.focus(&project_panel.focus_handle, cx);
+                            cx.notify();
                         }
                     } else {
                         let preview_tabs_enabled =

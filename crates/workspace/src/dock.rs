@@ -20,6 +20,7 @@ use ui::{ContextMenu, CountBadge, IconButton, TintColor, Tooltip, prelude::*, ri
 use util::ResultExt as _;
 
 pub(crate) const RESIZE_HANDLE_SIZE: Pixels = px(6.);
+pub(crate) const RESIZE_HITBOX_SIZE: Pixels = px(12.);
 
 pub enum PanelEvent {
     ZoomIn,
@@ -1307,28 +1308,28 @@ impl Render for Dock {
                     DockPosition::Left => deferred(
                         handle
                             .absolute()
-                            .right(-RESIZE_HANDLE_SIZE / 2.)
+                            .right(-RESIZE_HITBOX_SIZE / 2.)
                             .top(px(0.))
                             .h_full()
-                            .w(RESIZE_HANDLE_SIZE)
+                            .w(RESIZE_HITBOX_SIZE)
                             .cursor_col_resize(),
                     ),
                     DockPosition::Bottom => deferred(
                         handle
                             .absolute()
-                            .top(-RESIZE_HANDLE_SIZE / 2.)
+                            .top(-RESIZE_HITBOX_SIZE / 2.)
                             .left(px(0.))
                             .w_full()
-                            .h(RESIZE_HANDLE_SIZE)
+                            .h(RESIZE_HITBOX_SIZE)
                             .cursor_row_resize(),
                     ),
                     DockPosition::Right => deferred(
                         handle
                             .absolute()
                             .top(px(0.))
-                            .left(-RESIZE_HANDLE_SIZE / 2.)
+                            .left(-RESIZE_HITBOX_SIZE / 2.)
                             .h_full()
-                            .w(RESIZE_HANDLE_SIZE)
+                            .w(RESIZE_HITBOX_SIZE)
                             .cursor_col_resize(),
                     ),
                 }
@@ -1342,7 +1343,6 @@ impl Render for Dock {
                 .flex()
                 .bg(cx.theme().colors().panel_background)
                 .border_color(cx.theme().colors().border)
-                .overflow_hidden()
                 .map(|this| match self.position().axis() {
                     // Width and height are always set on the workspace wrapper in
                     // render_dock, so fill whatever space the wrapper provides.
@@ -1356,6 +1356,7 @@ impl Render for Dock {
                 })
                 .child(
                     div()
+                        .overflow_hidden()
                         .map(|this| match self.position().axis() {
                             Axis::Horizontal => this.w_full().h_full(),
                             Axis::Vertical => this.h_full().w_full(),
