@@ -2058,6 +2058,133 @@ impl LspInstaller for PyLspAdapter {
     }
 }
 
+// Ask Git rather than translating ignore patterns: nested rules and negations must
+// have the same meaning here as they do in the worktree.
+async fn configure_python_scan_scope(
+    adapter: &dyn LspAdapterDelegate,
+    configuration: &mut Value,
+) -> Result<()> {
+    let analysis = &configuration["basedpyright"]["analysis"];
+    if analysis.get("configFilePath").is_some()
+        || (analysis.get("include").is_some() && analysis.get("exclude").is_some())
+    {
+        return Ok(());
+    }
+    let Some(git) = adapter.which("git".as_ref()).await else {
+        return Ok(());
+    };
+    let environment = adapter.shell_env().await;
+    let run_git = |arguments: &'static [&'static str]| {
+        let mut command = new_command(&git);
+        command.current_dir(adapter.worktree_root_path());
+        command.envs(&environment).args(arguments);
+        async move {
+            match futures::future::select(
+                Box::pin(command.output()),
+                Box::pin(smol::Timer::after(std::time::Duration::from_secs(5))),
+            )
+            .await
+            {
+                futures::future::Either::Left((output, _)) => {
+                    let output = output?;
+                    ensure!(
+                        output.status.success(),
+                        "Git scan failed: {}",
+                        output.status
+                    );
+                    Ok::<_, anyhow::Error>(output.stdout)
+                }
+                futures::future::Either::Right(_) => anyhow::bail!("Git scan timed out"),
+            }
+        }
+    };
+    let (sources, ignored) = futures::try_join!(
+        run_git(&[
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "--",
+            "*.py",
+            "*.pyi"
+        ]),
+        run_git(&[
+            "ls-files",
+            "-z",
+            "--others",
+            "--ignored",
+            "--directory",
+            "--exclude-standard"
+        ]),
+    )?;
+    let (include, exclude) = python_scan_scope(&sources, &ignored)?;
+    let Some(analysis) = configuration["basedpyright"]["analysis"].as_object_mut() else {
+        return Ok(());
+    };
+    if !include.is_empty() {
+        analysis.entry("include").or_insert(json!(include));
+    }
+    analysis.entry("exclude").or_insert(json!(exclude));
+    normalize_pyright_analysis_configuration(configuration, "basedpyright");
+    Ok(())
+}
+
+fn python_scan_scope(sources: &[u8], ignored: &[u8]) -> Result<(Vec<String>, Vec<String>)> {
+    let paths = |bytes: &[u8]| -> Result<Vec<String>> {
+        std::str::from_utf8(bytes)?
+            .split('\0')
+            .filter(|path| !path.is_empty())
+            .map(|path| {
+                ensure!(
+                    !path.contains(['*', '?']),
+                    "Git path contains a glob wildcard"
+                );
+                Ok(path.to_owned())
+            })
+            .collect()
+    };
+    let directories: std::collections::BTreeSet<_> = paths(sources)?
+        .into_iter()
+        .map(|path| {
+            path.rsplit_once('/')
+                .map_or(".", |(parent, _)| parent)
+                .to_owned()
+        })
+        .collect();
+    let include = directories
+        .iter()
+        .filter(|directory| {
+            if directory.as_str() != "." && directories.contains(".") {
+                return false;
+            }
+            let mut ancestor = directory.as_str();
+            while let Some((parent, _)) = ancestor.rsplit_once('/') {
+                if directories.contains(parent) {
+                    return false;
+                }
+                ancestor = parent;
+            }
+            true
+        })
+        .cloned()
+        .collect();
+    let mut exclude = vec![
+        "**/node_modules".into(),
+        "**/__pycache__".into(),
+        "**/.git".into(),
+        "**/.venv".into(),
+    ];
+    exclude.extend(
+        paths(ignored)?
+            .into_iter()
+            .map(|path| path.trim_end_matches('/').to_owned()),
+    );
+    exclude.sort();
+    exclude.dedup();
+    Ok((include, exclude))
+}
+
 pub(crate) struct BasedPyrightLspAdapter {
     node: NodeRuntime,
 }
@@ -2141,7 +2268,7 @@ impl LspAdapter for BasedPyrightLspAdapter {
         _: Option<Uri>,
         cx: &mut AsyncApp,
     ) -> Result<Value> {
-        Ok(cx.update(move |cx| {
+        let mut configuration = cx.update(move |cx| {
             let mut user_settings =
                 language_server_settings(adapter.as_ref(), &Self::SERVER_NAME, cx)
                     .and_then(|s| s.settings.clone())
@@ -2209,7 +2336,12 @@ impl LspAdapter for BasedPyrightLspAdapter {
 
             normalize_pyright_analysis_configuration(&mut user_settings, "basedpyright");
             user_settings
-        }))
+        });
+        if let Err(error) = configure_python_scan_scope(adapter.as_ref(), &mut configuration).await
+        {
+            log::warn!("Could not detect Python scan scope: {error:#}");
+        }
+        Ok(configuration)
     }
 }
 
@@ -3039,6 +3171,27 @@ mod tests {
     use crate::python::{
         normalize_pyright_analysis_configuration, python_module_name_from_relative_path,
     };
+
+    #[test]
+    fn test_python_scan_scope_respects_git_paths() {
+        let (include, exclude) = super::python_scan_scope(
+            b"backend/src/app.py\0backend/src/models/user.pyi\0scripts with spaces/check.py\0",
+            b"backend/.venv/\0frontend/node_modules/\0data/\0ignored.log\0",
+        )
+        .expect("valid Git output");
+        assert_eq!(include, ["backend/src", "scripts with spaces"]);
+        assert!(exclude.contains(&"data".to_owned()));
+        assert!(exclude.contains(&"frontend/node_modules".to_owned()));
+        assert!(exclude.contains(&"ignored.log".to_owned()));
+    }
+
+    #[test]
+    fn test_python_scan_scope_keeps_root_sources() {
+        let (include, _) =
+            super::python_scan_scope(b"app.py\0src/module.py\0", b"").expect("valid Git output");
+        assert_eq!(include, ["."]);
+        assert!(super::python_scan_scope(b"bad*/app.py\0", b"").is_err());
+    }
 
     #[test]
     fn test_normalize_legacy_basedpyright_analysis_configuration() {
