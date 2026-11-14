@@ -149,7 +149,7 @@ Java 属性补全与本地参数检查不依赖数据库；数据库离线时继
 
 验证入口：`python tests/features_smoke.py`（离线 Java 分析及真实数据库返回列）、`python tests/repository_mapping_smoke.py`（真实 ImagePromptLibraryMapper 的 style_body1 诊断）。测试不修改业务源码，不执行 Mapper SQL。
 
-源码已迁移至 OneDrive 的工具软件目录。默认 Rust 编译缓存位于本机 `Documents/tools/rust/targets/zed-mybatis-jump`，不放进 OneDrive。项目集成测试默认使用 `C:/Users/62453/Documents/projects/ai-manager-server`；可用 `MYBATIS_PROJECT_ROOT` 覆盖。
+源码位于本仓库的 `plugin/zed-mybatis-jump`；统一插件安装脚本的编译缓存位于仓库 `.local-plugin-build/target`，独立 `build.ps1` 默认使用插件目录下的 `target`。项目集成测试默认使用 `C:/Users/62453/Documents/projects/ai-manager-server`；可用 `MYBATIS_PROJECT_ROOT` 覆盖。
 
 ## SQL 参数引用跳转
 

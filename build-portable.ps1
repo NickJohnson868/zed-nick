@@ -3,7 +3,7 @@
 param(
     [ValidateRange(1, 128)][int]$Jobs = 8,
     [string]$OutputDirectory = (Join-Path $PSScriptRoot '.local-portable-build'),
-    [string]$TargetDirectory = (Join-Path $env:USERPROFILE 'Documents\tools\rust\targets\zed'),
+    [string]$TargetDirectory = (Join-Path $PSScriptRoot '.local-build\targets\zed'),
     [string]$SourceDataDirectory = (Join-Path $env:LOCALAPPDATA 'Zed'),
     [string]$SourceConfigDirectory = (Join-Path $env:APPDATA 'Zed'),
     [switch]$ImportProfile,
@@ -192,7 +192,7 @@ try {
 portable-data 内预装插件，首次启动后将配置和数据保存在程序旁边。
 通用 ZIP 自带 plugin 目录定义的插件，不包含个人设置、登录信息、数据库、日志或语言服务下载缓存。
 首次启动会自动创建所需内容；更新程序时保留自己机器上的 portable-data。
-项目里的 .zed/run-environments.json 配置各语言运行环境；下拉框选择入口。
+项目里的 .zed/zed-runner.json 统一配置各语言运行环境、扫描范围和忽略目录；下拉框选择入口。
 '@ | Set-Content -LiteralPath (Join-Path $outputPath '使用说明.txt') -Encoding utf8
     Write-Host "绿色版已生成：$(Join-Path $outputPath 'Zed.exe')" -ForegroundColor Green
 
