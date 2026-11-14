@@ -135,7 +135,7 @@ def rebuild_java_with_cached_grammars(build, environment):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--extensions-directory", type=Path, required=True)
-    parser.add_argument("--build-directory", type=Path, default=REPOSITORY / ".local-plugin-build")
+    parser.add_argument("--build-directory", type=Path, default=REPOSITORY / ".local-build" / "plugins")
     parser.add_argument("--extension-builder", type=Path)
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--skip-community", action="store_true")

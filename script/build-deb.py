@@ -21,7 +21,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--target-directory", type=Path, default=ROOT / ".local-linux-target")
-    parser.add_argument("--plugin-build-directory", type=Path, default=ROOT / ".local-plugin-build")
+    parser.add_argument("--plugin-build-directory", type=Path, default=ROOT / ".local-build" / "plugins")
     parser.add_argument("--jobs", type=int, choices=(1, 2), default=2)
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--skip-plugin-build", action="store_true")

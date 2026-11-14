@@ -9,7 +9,8 @@ version, official download URL and archive SHA-256. Their source is not vendored
 `install.py` installs personal and pinned community plugins without PowerShell;
 `install.ps1` remains an optional Windows installer. Use `--skip-community`
 only for isolated tests or when explicitly installing personal plugins alone.
-Downloaded packages and compiler outputs stay in the ignored `.local-plugin-build`.
+Downloaded packages and compiler outputs stay in the ignored `.local-build/plugins`.
+Keep local logs, snapshots and one-off scripts under `.local-build/history`; portable staging uses `.local-build/portable`. These local artifacts must not be committed.
 The Python installer reuses grammar WASM only when its pinned repositories and
 commits match the current manifest. It still compiles the current Java extension
 and copies the current language queries, so fixes are not replaced by old cache contents.

@@ -3,7 +3,7 @@
 param(
     [Parameter(Mandatory=$true)][string]$ExtensionsDirectory,
     [string]$ExtensionBuilder,
-    [string]$BuildDirectory = (Join-Path $PSScriptRoot '../.local-plugin-build'),
+    [string]$BuildDirectory = (Join-Path $PSScriptRoot '../.local-build/plugins'),
     [switch]$SkipBuild,
     [switch]$SkipCommunity
 )

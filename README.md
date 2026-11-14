@@ -22,7 +22,7 @@ Other platforms are not yet available:
 
 ### Personal Windows build
 
-Double-click [`build-portable.bat`](./build-portable.bat) (requires PowerShell 7). It builds with 8 parallel jobs, retains Cargo's cache, builds GUI and CLI separately, and creates `ZedNick-Portable.zip` in the repository root. Extract the ZIP and double-click `Zed.exe`; its adjacent `portable-data` directory holds the profile. An explicit `--user-data-dir` takes precedence. The ZIP starts with a blank profile, and the archive is gitignored.
+Double-click [`build-portable.bat`](./build-portable.bat) (requires PowerShell 7). It builds with 8 parallel jobs, retains Cargo's cache, builds GUI and CLI separately, and creates `.local-build/packages/ZedNick-Portable.zip`. Extract the ZIP and double-click `Zed.exe`; its adjacent `portable-data` directory holds the profile. An explicit `--user-data-dir` takes precedence. The ZIP starts with a blank profile, and the archive is gitignored.
 
 The title bar contains an entry selector, Run/Rerun and Stop. Entry discovery runs in the background against non-ignored project files. Per-language runtimes and environment variables are configured in `.zed/zed-runner.json`; the menu can create/open the configuration. Java entries use incremental Maven `compile` plus module classpaths and skip Maven when the input/output cache is unchanged. Existing `primary-run` tasks are retained only when no Java entry is discovered. Private project environment configuration is preserved. This is initial discovery for common entry forms, not a complete language semantic index.
 

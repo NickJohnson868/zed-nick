@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param(
     [ValidateRange(1, 128)][int]$Jobs = 8,
-    [string]$OutputDirectory = (Join-Path $PSScriptRoot '.local-portable-build'),
+    [string]$OutputDirectory = (Join-Path $PSScriptRoot '.local-build/portable'),
     [string]$TargetDirectory = (Join-Path $PSScriptRoot '.local-build\targets\zed'),
     [string]$SourceDataDirectory = (Join-Path $env:LOCALAPPDATA 'Zed'),
     [string]$SourceConfigDirectory = (Join-Path $env:APPDATA 'Zed'),
@@ -10,7 +10,7 @@ param(
     [switch]$SkipProfileImport,
     [switch]$SkipBuild,
     [switch]$SkipPluginBuild,
-    [string]$PluginBuildDirectory = (Join-Path $PSScriptRoot '.local-plugin-build')
+    [string]$PluginBuildDirectory = (Join-Path $PSScriptRoot '.local-build/plugins')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -196,8 +196,10 @@ portable-data 内预装插件，首次启动后将配置和数据保存在程序
 '@ | Set-Content -LiteralPath (Join-Path $outputPath '使用说明.txt') -Encoding utf8
     Write-Host "绿色版已生成：$(Join-Path $outputPath 'Zed.exe')" -ForegroundColor Green
 
-    $archivePath = Join-Path $PSScriptRoot 'ZedNick-Portable.zip'
-    $temporaryArchive = Join-Path $PSScriptRoot ('.local-portable-zip-' + [Guid]::NewGuid().ToString('N') + '.tmp')
+    $packageDirectory = Join-Path $PSScriptRoot '.local-build/packages'
+    New-Item -ItemType Directory -Path $packageDirectory -Force | Out-Null
+    $archivePath = Join-Path $packageDirectory 'ZedNick-Portable.zip'
+    $temporaryArchive = Join-Path $packageDirectory ('portable-' + [Guid]::NewGuid().ToString('N') + '.tmp')
     Copy-Item -LiteralPath "$PSScriptRoot/script/update-portable.ps1" -Destination (Join-Path $outputPath 'Update-Zed.ps1') -Force
     $files = @('Zed.exe', 'bin\zed.exe', 'conpty.dll', 'amd_ags_x64.dll', 'x64\OpenConsole.exe', '使用说明.txt', 'Update-Zed.ps1')
     if (Test-Path -LiteralPath (Join-Path $outputPath 'arm64\OpenConsole.exe') -PathType Leaf) {

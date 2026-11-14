@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)][string]$ExtensionsDirectory,
-    [string]$CacheDirectory = (Join-Path $PSScriptRoot '../.local-plugin-build/community')
+    [string]$CacheDirectory = (Join-Path $PSScriptRoot '../.local-build/plugins/community')
 )
 $ErrorActionPreference = 'Stop'
 $manifest = Get-Content -LiteralPath "$PSScriptRoot/community.json" -Raw -Encoding UTF8 | ConvertFrom-Json
