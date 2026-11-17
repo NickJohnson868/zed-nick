@@ -15,6 +15,8 @@ use serde::{Deserialize, Serialize};
 use strum::EnumString;
 use thiserror::Error;
 
+pub use language_model_core::InputTransformation;
+
 pub mod batches;
 pub mod completion;
 
@@ -72,6 +74,26 @@ pub fn supports_forced_tool_use(model_id: &str) -> bool {
             | "claude-fable-5-1"
             | "claude-mythos-5-1"
             | "claude-sonnet-5-5"
+    )
+}
+
+/// Whether this model accepts system messages inside conversation history.
+///
+/// Older models retain the flattened system-prompt representation.
+/// <https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages>
+pub fn supports_mid_conversation_system_messages(model_id: &str) -> bool {
+    matches!(
+        model_id,
+        "claude-fable-5-1"
+            | "claude-mythos-5-1"
+            | "claude-fable-5"
+            | "claude-mythos-5"
+            | "claude-mythos-preview"
+            | "claude-opus-5-5"
+            | "claude-opus-5"
+            | "claude-opus-4-8"
+            | "claude-sonnet-5-5"
+            | "claude-haiku-5-5"
     )
 }
 
@@ -782,6 +804,7 @@ pub struct Message {
 pub enum Role {
     User,
     Assistant,
+    System,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1182,6 +1205,10 @@ pub struct Response {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stop_sequence: Option<String>,
     pub usage: Usage,
+    /// Changes the API made to the request before the model read it. Only sent
+    /// with the [`THINKING_BINDING_CONTROLS_BETA_HEADER`] beta header.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub input_transformations: Vec<InputTransformation>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1231,6 +1258,13 @@ pub enum ContentDelta {
 pub struct MessageDelta {
     pub stop_reason: Option<String>,
     pub stop_sequence: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_details: Option<RefusalStopDetails>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RefusalStopDetails {
+    pub category: Option<String>,
 }
 
 #[derive(Debug)]

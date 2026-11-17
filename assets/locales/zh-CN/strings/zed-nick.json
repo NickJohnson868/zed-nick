@@ -1564,5 +1564,7 @@
   "Remove from Command History": "从命令历史中移除",
   "Pull From…": "从指定远端分支拉取…",
   "Single Click": "单击",
-  "Double Click": "双击"
+  "Double Click": "双击",
+  "Show Title Bar": "显示标题栏",
+  "When to show the title bar and its window controls.": "何时显示标题栏及其窗口控件。"
 }
