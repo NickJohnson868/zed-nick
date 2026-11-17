@@ -21,7 +21,7 @@ Git 项目以 git ls-files --cached --others --exclude-standard 为扫描范围�
 
 ## Spring Boot 开发热更新
 
-设置 Java 运行环境的 `hot_reload: true`，重新扫描后选择“Java 热更新 · 主类”。项目需提供 dev-hot-reload Maven profile：所有模块的 build.directory 为 `${project.basedir}/target/dev-hot-reload`，启动模块提供 DevTools。原生扫描器调用 scripts/JavaRunner.java，只使用项目必需的 JDK 和 Maven。
+每个主类只显示一个“Java · 主类”入口。Java 运行环境的 `hot_reload: true` 启用热更新，`false` 或未配置时普通运行；原生 Java 插件在每次启动时读取该开关，修改开关无需重新扫描。项目需提供 dev-hot-reload Maven profile：所有模块的 build.directory 为 `${project.basedir}/target/dev-hot-reload`，启动模块提供 DevTools。原生 Java 插件调用 scripts/JavaRunner.java，只使用项目必需的 JDK 和 Maven。
 
 保存后自动编译，成功才更新 DevTools 重启触发文件；编译失败时保留进程，修正并保存后重试。监听包含实际依赖模块，即使该模块不在入口扫描白名单内。修改 POM/依赖后重新运行入口；删除、移动类后先停止，再用同一 profile clean 后启动。
 

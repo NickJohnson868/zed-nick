@@ -3103,6 +3103,38 @@ impl Terminal {
         }
     }
 
+    pub fn has_running_processes(&self, cx: &App) -> Task<bool> {
+        if self
+            .task()
+            .is_some_and(|task| task.status == TaskStatus::Running)
+        {
+            return Task::ready(true);
+        }
+        if self.child_exited.is_some() {
+            return Task::ready(false);
+        }
+        let Some(root) = self.pid_getter().map(ProcessIdGetter::fallback_pid) else {
+            return Task::ready(false);
+        };
+        cx.background_executor().spawn(async move {
+            let mut system = sysinfo::System::new();
+            system.refresh_processes_specifics(
+                sysinfo::ProcessesToUpdate::All,
+                true,
+                sysinfo::ProcessRefreshKind::nothing().without_tasks(),
+            );
+            system
+                .processes()
+                .values()
+                .any(|process| process.parent() == Some(root))
+        })
+    }
+
+    pub fn terminate_on_close(&mut self) {
+        self.kill_active_task();
+        self.release_pty_resources();
+    }
+
     pub fn kill_active_task(&mut self) {
         if let Some(task) = self.task()
             && task.status == TaskStatus::Running

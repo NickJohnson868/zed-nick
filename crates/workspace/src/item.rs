@@ -276,6 +276,16 @@ pub trait Item: Focusable + EventEmitter<Self::Event> + Render + Sized {
         _ = (workspace_id, window, cx);
         unimplemented!("clone_on_split() must be implemented if can_split() returns true")
     }
+    fn confirm_close(
+        &mut self,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Task<Result<bool>> {
+        Task::ready(Ok(true))
+    }
+
+    fn close_confirmed(&mut self, _cx: &mut Context<Self>) {}
+
     fn is_dirty(&self, _: &App) -> bool {
         false
     }
@@ -527,6 +537,8 @@ pub trait ItemHandle: 'static + Send {
     fn navigate(&self, data: Arc<dyn Any + Send>, window: &mut Window, cx: &mut App) -> bool;
     fn item_id(&self) -> EntityId;
     fn to_any_view(&self) -> AnyView;
+    fn confirm_close(&self, window: &mut Window, cx: &mut App) -> Task<Result<bool>>;
+    fn close_confirmed(&self, cx: &mut App);
     fn is_dirty(&self, cx: &App) -> bool;
     fn capability(&self, cx: &App) -> Capability;
     fn read_only_toggle_buffer(&self, cx: &App) -> Option<Entity<Buffer>>;
@@ -1036,6 +1048,14 @@ impl<T: Item> ItemHandle for Entity<T> {
 
     fn to_any_view(&self) -> AnyView {
         self.clone().into()
+    }
+
+    fn confirm_close(&self, window: &mut Window, cx: &mut App) -> Task<Result<bool>> {
+        self.update(cx, |item, cx| item.confirm_close(window, cx))
+    }
+
+    fn close_confirmed(&self, cx: &mut App) {
+        self.update(cx, |item, cx| item.close_confirmed(cx));
     }
 
     fn is_dirty(&self, cx: &App) -> bool {

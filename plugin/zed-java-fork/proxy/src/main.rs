@@ -118,6 +118,13 @@ enum OutputRoute {
 
 fn main() {
     let task_arguments: Vec<String> = env::args().skip(1).collect();
+    if task_arguments.first().map(String::as_str) == Some("--java-project") {
+        if let Err(error) = tasks::run_project(&task_arguments[1..]) {
+            eprintln!("Java project failed: {error}");
+            process::exit(1);
+        }
+        return;
+    }
     if task_arguments.first().map(String::as_str) == Some("--java-task") {
         let result = task_arguments
             .get(1)

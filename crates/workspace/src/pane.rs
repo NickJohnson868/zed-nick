@@ -1995,11 +1995,21 @@ impl Pane {
             return Task::ready(Ok(()));
         };
         cx.spawn_in(window, async move |pane, cx| {
+            for item in &items_to_close {
+                if !cx
+                    .update(|window, cx| item.confirm_close(window, cx))?
+                    .await?
+                {
+                    return Ok(());
+                }
+            }
             let dirty_items = workspace.update(cx, |workspace, cx| {
                 items_to_close
                     .iter()
                     .filter(|item| {
-                        item.is_dirty(cx) && !Self::skip_save_on_close(item.as_ref(), workspace, cx)
+                        (item.can_save(cx) || item.can_save_as(cx))
+                            && item.is_dirty(cx)
+                            && !Self::skip_save_on_close(item.as_ref(), workspace, cx)
                     })
                     .map(|item| item.boxed_clone())
                     .collect::<Vec<_>>()
@@ -2078,6 +2088,7 @@ impl Pane {
                 // Remove the item from the pane.
                 if should_close {
                     pane.update_in(cx, |pane, window, cx| {
+                        item_to_close.close_confirmed(cx);
                         pane.remove_item(
                             item_to_close.item_id(),
                             false,

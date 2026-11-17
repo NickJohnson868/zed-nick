@@ -259,6 +259,37 @@ fn clear_cache() -> io::Result<()> {
     Ok(())
 }
 
+pub fn run_project(arguments: &[String]) -> io::Result<()> {
+    let root = PathBuf::from(
+        env::var_os("ZED_JAVA_NATIVE_ROOT").ok_or_else(|| error("Missing Java project root"))?,
+    );
+    let java_home =
+        PathBuf::from(env::var_os("JAVA_HOME").ok_or_else(|| error("Missing JAVA_HOME"))?);
+    let configured = runner_config::load(&root)?;
+    let mode = if env::var("ZED_JAVA_NATIVE_MODE").as_deref() == Ok("build") {
+        "build"
+    } else if configured["environments"]["java"]["hot_reload"].as_bool() == Some(true) {
+        "hot"
+    } else {
+        "run"
+    };
+    let status = Command::new(java_home.join(if cfg!(windows) {
+        "bin/java.exe"
+    } else {
+        "bin/java"
+    }))
+    .args(arguments)
+    .env("ZED_JAVA_NATIVE_MODE", mode)
+    .stdin(Stdio::inherit())
+    .stdout(Stdio::inherit())
+    .stderr(Stdio::inherit())
+    .status()?;
+    if !status.success() {
+        return Err(error(&format!("Java runner exited with {status}")));
+    }
+    Ok(())
+}
+
 pub fn run(mode: &str) -> io::Result<()> {
     if mode == "cache" {
         return clear_cache();

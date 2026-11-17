@@ -119,9 +119,12 @@ fn java_source_files(directory: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
     Ok(())
 }
 
-fn native_java_entries(root: &Path, provider: &Path) -> Result<Vec<RunEntry>> {
+fn native_java_entries(
+    root: &Path,
+    provider: &Path,
+    config: &serde_json::Value,
+) -> Result<Vec<RunEntry>> {
     let helper = provider.join("scripts/JavaRunner.java");
-    let config = native_run_config(root)?;
     let settings = &config["environments"]["java"];
     if settings["runtime"].as_str().unwrap_or_default().is_empty() || !helper.is_file() {
         return Ok(Vec::new());
@@ -209,9 +212,6 @@ fn native_java_entries(root: &Path, provider: &Path) -> Result<Vec<RunEntry>> {
     let mut entries = Vec::new();
     let scan_config = &config;
     for file in files {
-        if !file.is_file() || file.is_symlink() {
-            continue;
-        }
         let relative_path = file.strip_prefix(root)?;
         if let Some(directories) = scan_config["scan_directories"].as_array()
             && !directories
@@ -233,6 +233,9 @@ fn native_java_entries(root: &Path, provider: &Path) -> Result<Vec<RunEntry>> {
                         .any(|component| component.as_os_str() == directory)
             })
         {
+            continue;
+        }
+        if !file.is_file() || file.is_symlink() {
             continue;
         }
         let source = fs::read_to_string(&file)?;
@@ -309,7 +312,13 @@ fn native_java_entries(root: &Path, provider: &Path) -> Result<Vec<RunEntry>> {
         );
         environment.insert("ZED_JAVA_NATIVE_MAIN".into(), main.clone().into());
         environment.insert("ZED_JAVA_NATIVE_MODE".into(), "run".into());
+        let project_runner = provider.join("../../work/java/bin").join(if cfg!(windows) {
+            "java-lsp-proxy.exe"
+        } else {
+            "java-lsp-proxy"
+        });
         let arguments = vec![
+            "--java-project".into(),
             "-Dfile.encoding=UTF-8".into(),
             "-Dstdout.encoding=UTF-8".into(),
             "-Dstderr.encoding=UTF-8".into(),
@@ -320,7 +329,7 @@ fn native_java_entries(root: &Path, provider: &Path) -> Result<Vec<RunEntry>> {
             "java",
             &relative,
             &format!("Java · {main}"),
-            &java,
+            &project_runner,
             &arguments,
             environment.clone(),
             root,
@@ -335,22 +344,8 @@ fn native_java_entries(root: &Path, provider: &Path) -> Result<Vec<RunEntry>> {
             "vmArgs": settings["jvm_args"].as_array().cloned().unwrap_or_default(),
             "args": settings["args"].as_array().cloned().unwrap_or_default(), "build": build_task
         }))?);
+        entry.matching_extensions = vec!["java".into(), "xml".into(), "yaml".into()];
         entries.push(entry);
-        if settings["hot_reload"].as_bool() == Some(true) {
-            environment.insert("ZED_JAVA_NATIVE_MODE".into(), "hot".into());
-            let mut hot_entry = native_entry(
-                format!("java-hot-reload:{relative}"),
-                "java",
-                &relative,
-                &format!("Java 热更新 · {main}"),
-                &java,
-                &arguments,
-                environment,
-                root,
-            )?;
-            hot_entry.matching_extensions = vec!["java".into(), "xml".into(), "yaml".into()];
-            entries.push(hot_entry);
-        }
     }
     Ok(entries)
 }
@@ -581,8 +576,11 @@ fn collect_source_files(directory: &Path, files: &mut Vec<PathBuf>) -> Result<()
     Ok(())
 }
 
-fn native_other_entries(root: &Path, provider: &Path) -> Result<Vec<RunEntry>> {
-    let config = native_run_config(root)?;
+fn native_other_entries(
+    root: &Path,
+    provider: &Path,
+    config: &serde_json::Value,
+) -> Result<Vec<RunEntry>> {
     let scan = &config;
     let python_settings = &config["environments"]["python"];
     let python = native_runtime(python_settings, "runtime")?;
@@ -599,6 +597,13 @@ fn native_other_entries(root: &Path, provider: &Path) -> Result<Vec<RunEntry>> {
             "--cached",
             "--others",
             "--exclude-standard",
+            "--",
+            "*.py",
+            "*.go",
+            "package.json",
+            "Cargo.toml",
+            "*.csproj",
+            "*.fsproj",
         ])
         .current_dir(root)
         .output();
@@ -618,7 +623,13 @@ fn native_other_entries(root: &Path, provider: &Path) -> Result<Vec<RunEntry>> {
     let environment = |language: &str| environment_values(&config["environments"][language]["env"]);
     let mut entries = Vec::new();
     for file in files {
-        if !file.is_file() || file.is_symlink() {
+        if !matches!(
+            file.extension().and_then(|extension| extension.to_str()),
+            Some("py" | "go" | "csproj" | "fsproj")
+        ) && !file
+            .file_name()
+            .is_some_and(|name| name == "package.json" || name == "Cargo.toml")
+        {
             continue;
         }
         let relative = file.strip_prefix(root)?;
@@ -642,6 +653,9 @@ fn native_other_entries(root: &Path, provider: &Path) -> Result<Vec<RunEntry>> {
                         .any(|component| component.as_os_str() == directory)
             })
         {
+            continue;
+        }
+        if !file.is_file() || file.is_symlink() {
             continue;
         }
         let relative = relative.to_string_lossy().replace('\\', "/");
@@ -952,10 +966,10 @@ pub async fn discover(root: &Path) -> Result<Discovery> {
             }
             discovery
                 .entries
-                .extend(native_java_entries(root, &provider)?);
+                .extend(native_java_entries(root, &provider, &config)?);
             discovery
                 .entries
-                .extend(native_other_entries(root, &provider)?);
+                .extend(native_other_entries(root, &provider, &config)?);
             continue;
         }
     }
@@ -1057,11 +1071,14 @@ mod native_tests {
             "python": {"runtime": executable, "env": {}}, "go": {"runtime": executable, "env": {}}, "javascript": {"runtime": executable, "env": {}}
         }, "entries": []}))?,
         )?;
-        let mut entries = native_java_entries(&root, &provider)?;
-        entries.extend(native_other_entries(&root, &provider)?);
+        let mut entries = native_java_entries(&root, &provider, &native_run_config(&root)?)?;
+        entries.extend(native_other_entries(
+            &root,
+            &provider,
+            &native_run_config(&root)?,
+        )?);
         for id in [
             "java:src/main/java/Main.java",
-            "java-hot-reload:src/main/java/Main.java",
             "python:job.py",
             "go:cmd/main.go",
             "javascript:package.json:start",
@@ -1078,7 +1095,7 @@ mod native_tests {
         }
         let hot = entries
             .iter()
-            .find(|entry| entry.id.starts_with("java-hot-reload:"))
+            .find(|entry| entry.id == "java:src/main/java/Main.java")
             .context("hot entry")?;
         assert!(
             hot.matching_extensions
@@ -1087,7 +1104,7 @@ mod native_tests {
         );
         assert_eq!(
             hot.task.env.get("ZED_JAVA_NATIVE_MODE").map(String::as_str),
-            Some("hot")
+            Some("run")
         );
         assert!(
             hot.task
@@ -1095,12 +1112,40 @@ mod native_tests {
                 .get("ZED_JAVA_NATIVE_ARGS")
                 .is_some_and(|value| value.starts_with("6:中文"))
         );
+        assert_eq!(
+            native_java_entries(&root, &provider, &native_run_config(&root)?)?.len(),
+            1
+        );
+        assert!(
+            entries
+                .iter()
+                .all(|entry| !entry.id.starts_with("java-hot-reload:"))
+        );
+        let mut config: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(root.join(CONFIG_PATH))?)?;
+        config["environments"]["java"]["hot_reload"] = serde_json::json!(false);
+        write(&root.join(CONFIG_PATH), &serde_json::to_string(&config)?)?;
+        let normal = native_java_entries(&root, &provider, &native_run_config(&root)?)?;
+        assert_eq!(normal.len(), 1);
+        let normal = normal.first().context("normal Java entry")?;
+        assert_eq!(normal.id, hot.id);
+        assert_eq!(
+            normal
+                .task
+                .env
+                .get("ZED_JAVA_NATIVE_MODE")
+                .map(String::as_str),
+            Some("run")
+        );
         write(
             &root.join(CONFIG_PATH),
             r#"{"scan_directories":["src"],"ignore_directories":[]}"#,
         )?;
-        assert!(native_other_entries(&root, &provider)?.is_empty());
-        assert_eq!(native_java_entries(&root, &provider)?.len(), 2);
+        assert!(native_other_entries(&root, &provider, &native_run_config(&root)?)?.is_empty());
+        assert_eq!(
+            native_java_entries(&root, &provider, &native_run_config(&root)?)?.len(),
+            1
+        );
         ensure!(
             fixture.starts_with(&temporary),
             "fixture cleanup must stay in temporary directory"

@@ -127,8 +127,39 @@ pub struct BlockContext<'a, 'b> {
     pub dimensions: TerminalBounds,
 }
 
+#[derive(Clone, Copy)]
+enum TerminalCloseAction {
+    Terminate,
+    Detach,
+}
+
+#[derive(Default)]
+struct DetachedTerminals(Vec<(Entity<Terminal>, Subscription)>);
+impl gpui::Global for DetachedTerminals {}
+
+fn detach_terminal(terminal: Entity<Terminal>, cx: &mut App) {
+    let subscription = cx.subscribe(&terminal, |terminal, event, cx| {
+        if matches!(event, Event::CloseTerminal)
+            || (matches!(event, Event::Wakeup)
+                && terminal
+                    .read(cx)
+                    .task()
+                    .is_some_and(|task| task.status != TaskStatus::Running))
+        {
+            cx.default_global::<DetachedTerminals>()
+                .0
+                .retain(|(entry, _)| entry != &terminal);
+        }
+    });
+    let detached = cx.default_global::<DetachedTerminals>();
+    if !detached.0.iter().any(|(entry, _)| entry == &terminal) {
+        detached.0.push((terminal, subscription));
+    }
+}
+
 ///A terminal view, maintains the PTY's file handles and communicates with the terminal
 pub struct TerminalView {
+    close_action: Option<TerminalCloseAction>,
     terminal: Entity<Terminal>,
     workspace: WeakEntity<Workspace>,
     project: WeakEntity<Project>,
@@ -288,6 +319,7 @@ impl TerminalView {
         ];
 
         Self {
+            close_action: None,
             terminal,
             workspace: workspace_handle,
             project,
@@ -1586,6 +1618,42 @@ impl Render for TerminalView {
 }
 
 impl Item for TerminalView {
+    fn confirm_close(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Task<Result<bool>> {
+        self.close_action = None;
+        let running = self.terminal.read(cx).has_running_processes(cx);
+        cx.spawn_in(window, async move |this, cx| {
+            if !running.await {
+                return Ok(true);
+            }
+            let answer = cx.update(|window, cx| {
+                window.prompt(
+                    gpui::PromptLevel::Warning,
+                    &i18n::t!("This terminal has running processes."),
+                    Some(&i18n::t!("Detach keeps them running in Zed after this tab closes. Exiting Zed will still stop them.")),
+                    &[&i18n::t!("Terminate Processes"), &i18n::t!("Detach Processes"), &i18n::t!("Cancel")],
+                    cx,
+                )
+            })?.await?;
+            let action = match answer {
+                0 => TerminalCloseAction::Terminate,
+                1 => TerminalCloseAction::Detach,
+                _ => return Ok(false),
+            };
+            this.update(cx, |this, _| this.close_action = Some(action))?;
+            Ok(true)
+        })
+    }
+
+    fn close_confirmed(&mut self, cx: &mut Context<Self>) {
+        match self.close_action.take() {
+            Some(TerminalCloseAction::Terminate) => self
+                .terminal
+                .update(cx, |terminal, _| terminal.terminate_on_close()),
+            Some(TerminalCloseAction::Detach) => detach_terminal(self.terminal.clone(), cx),
+            None => {}
+        }
+    }
+
     type Event = ItemEvent;
 
     fn tab_tooltip_content(&self, cx: &App) -> Option<TabTooltipContent> {

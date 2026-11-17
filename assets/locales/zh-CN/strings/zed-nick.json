@@ -1566,5 +1566,9 @@
   "Single Click": "单击",
   "Double Click": "双击",
   "Show Title Bar": "显示标题栏",
-  "When to show the title bar and its window controls.": "何时显示标题栏及其窗口控件。"
+  "When to show the title bar and its window controls.": "何时显示标题栏及其窗口控件。",
+  "This terminal has running processes.": "此终端中有正在运行的进程。",
+  "Detach keeps them running in Zed after this tab closes. Exiting Zed will still stop them.": "分离后，关闭此标签不会终止进程，进程由 Zed 在后台托管。退出 Zed 仍会终止进程。",
+  "Terminate Processes": "终止进程",
+  "Detach Processes": "分离进程"
 }
