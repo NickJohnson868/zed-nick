@@ -1618,7 +1618,11 @@ impl Render for TerminalView {
 }
 
 impl Item for TerminalView {
-    fn confirm_close(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Task<Result<bool>> {
+    fn confirm_close(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<bool>> {
         self.close_action = None;
         let running = self.terminal.read(cx).has_running_processes(cx);
         cx.spawn_in(window, async move |this, cx| {
@@ -1630,7 +1634,7 @@ impl Item for TerminalView {
                     gpui::PromptLevel::Warning,
                     &i18n::t!("This terminal has running processes."),
                     Some(&i18n::t!("Detach keeps them running in Zed after this tab closes. Exiting Zed will still stop them.")),
-                    &[&i18n::t!("Terminate Processes"), &i18n::t!("Detach Processes"), &i18n::t!("Cancel")],
+                    &[&*i18n::t!("Terminate Processes"), &*i18n::t!("Detach Processes"), &*i18n::t!("Cancel")],
                     cx,
                 )
             })?.await?;

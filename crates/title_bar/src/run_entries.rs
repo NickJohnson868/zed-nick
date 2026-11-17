@@ -601,7 +601,9 @@ fn native_other_entries(
             "*.py",
             "*.go",
             "package.json",
+            "**/package.json",
             "Cargo.toml",
+            "**/Cargo.toml",
             "*.csproj",
             "*.fsproj",
         ])
@@ -1071,6 +1073,18 @@ mod native_tests {
             "python": {"runtime": executable, "env": {}}, "go": {"runtime": executable, "env": {}}, "javascript": {"runtime": executable, "env": {}}
         }, "entries": []}))?,
         )?;
+        write(
+            &root.join("frontend/nested/package.json"),
+            r#"{"scripts":{"dev":"node app.js"}}"#,
+        )?;
+        let git = util::command::new_std_command("git")
+            .args(["init", "--quiet"])
+            .current_dir(&root)
+            .output()?;
+        ensure!(
+            git.status.success(),
+            "Could not initialize Git scan fixture"
+        );
         let mut entries = native_java_entries(&root, &provider, &native_run_config(&root)?)?;
         entries.extend(native_other_entries(
             &root,
@@ -1082,6 +1096,7 @@ mod native_tests {
             "python:job.py",
             "go:cmd/main.go",
             "javascript:package.json:start",
+            "javascript:frontend/nested/package.json:dev",
         ] {
             assert!(entries.iter().any(|entry| entry.id == id), "missing {id}");
         }
