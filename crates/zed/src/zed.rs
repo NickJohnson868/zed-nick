@@ -6503,6 +6503,7 @@ mod tests {
     }
 
     pub(crate) fn init_test(cx: &mut TestAppContext) -> Arc<AppState> {
+        cx.update(|cx| cx.set_global(db::AppDatabase::test_new()));
         init_test_with_state(cx, cx.update(AppState::test))
     }
 
@@ -8718,7 +8719,6 @@ mod tests {
     }
 
     async fn init_startup_test(cx: &mut TestAppContext) -> Arc<AppState> {
-        cx.update(|cx| cx.set_global(db::AppDatabase::test_new()));
         let app_state = init_test(cx);
         cx.update(|cx| db::kvp::KeyValueStore::global(cx))
             .write_kvp(onboarding::FIRST_OPEN.to_owned(), "false".to_owned())

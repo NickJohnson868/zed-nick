@@ -1351,10 +1351,6 @@ impl ApiError {
         ApiErrorCode::from_str(&self.error_type).ok()
     }
 
-    pub fn is_rate_limit_error(&self) -> bool {
-        matches!(self.error_type.as_str(), "rate_limit_error")
-    }
-
     pub fn match_window_exceeded(&self) -> Option<u64> {
         let Some(ApiErrorCode::InvalidRequestError) = self.code() else {
             return None;
@@ -1378,7 +1374,9 @@ pub fn parse_prompt_too_long(message: &str) -> Option<u64> {
 impl From<language_model_core::Speed> for Speed {
     fn from(speed: language_model_core::Speed) -> Self {
         match speed {
-            language_model_core::Speed::Standard => Speed::Standard,
+            language_model_core::Speed::Standard | language_model_core::Speed::Ultrafast => {
+                Speed::Standard
+            }
             language_model_core::Speed::Fast => Speed::Fast,
         }
     }

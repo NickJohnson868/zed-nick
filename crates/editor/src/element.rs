@@ -583,6 +583,7 @@ impl EditorElement {
         register_action(editor, window, Editor::fold_at_level_7);
         register_action(editor, window, Editor::fold_at_level_8);
         register_action(editor, window, Editor::fold_at_level_9);
+        register_action(editor, window, Editor::fold_at_current_indentation_level);
         register_action(editor, window, Editor::fold_all);
         register_action(editor, window, Editor::fold_function_bodies);
         register_action(editor, window, Editor::fold_recursive);
@@ -11044,13 +11045,6 @@ impl CursorLayout {
             block_text,
             cursor_name: None,
             animated_corners: None,
-        }
-    }
-
-    pub fn bounding_rect(&self, origin: gpui::Point<Pixels>) -> Bounds<Pixels> {
-        Bounds {
-            origin: self.origin + origin,
-            size: size(self.block_width, self.line_height),
         }
     }
 
