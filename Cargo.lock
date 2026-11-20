@@ -3383,7 +3383,6 @@ dependencies = [
 name = "command_palette"
 version = "0.1.0"
 dependencies = [
- "i18n",
  "anyhow",
  "client",
  "command_palette_hooks",
@@ -3392,6 +3391,7 @@ dependencies = [
  "fuzzy_nucleo",
  "go_to_line",
  "gpui",
+ "i18n",
  "language",
  "log",
  "menu",
@@ -5429,7 +5429,6 @@ dependencies = [
 name = "editor"
 version = "0.1.0"
 dependencies = [
- "i18n",
  "aho-corasick",
  "anyhow",
  "assets",
@@ -5453,6 +5452,7 @@ dependencies = [
  "fuzzy",
  "git",
  "gpui",
+ "i18n",
  "indoc",
  "itertools 0.14.0",
  "language",
@@ -6110,7 +6110,6 @@ dependencies = [
 name = "extensions_ui"
 version = "0.1.0"
 dependencies = [
- "i18n",
  "anyhow",
  "cloud_api_types",
  "collections",
@@ -6126,6 +6125,7 @@ dependencies = [
  "git",
  "gpui",
  "http_client",
+ "i18n",
  "language",
  "log",
  "markdown",
@@ -7049,7 +7049,6 @@ dependencies = [
 name = "git_ui"
 version = "0.1.0"
 dependencies = [
- "i18n",
  "agent_settings",
  "anyhow",
  "askpass",
@@ -7071,6 +7070,7 @@ dependencies = [
  "git",
  "git_ui_core",
  "gpui",
+ "i18n",
  "indoc",
  "itertools 0.14.0",
  "language",
@@ -8423,6 +8423,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "i18n"
+version = "0.1.0"
+dependencies = [
+ "core-foundation 0.10.0",
+ "core-foundation-sys",
+ "gpui_shared_string",
+ "serde",
+ "serde_json",
+ "sys-locale",
+]
+
+[[package]]
 name = "iana-time-zone"
 version = "0.1.64"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8444,18 +8456,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f"
 dependencies = [
  "cc",
-]
-
-[[package]]
-name = "i18n"
-version = "0.1.0"
-dependencies = [
- "core-foundation 0.10.0",
- "core-foundation-sys",
- "gpui_shared_string",
- "serde",
- "serde_json",
- "sys-locale",
 ]
 
 [[package]]
@@ -9215,7 +9215,6 @@ dependencies = [
 name = "json_schema_store"
 version = "0.1.0"
 dependencies = [
- "i18n",
  "anyhow",
  "collections",
  "dap",
@@ -9223,6 +9222,7 @@ dependencies = [
  "feature_flags",
  "fs",
  "gpui",
+ "i18n",
  "language",
  "parking_lot",
  "paths",
@@ -12494,7 +12494,6 @@ dependencies = [
 name = "outline_panel"
 version = "0.1.0"
 dependencies = [
- "i18n",
  "anyhow",
  "async-channel 2.5.0",
  "buffer_diff",
@@ -12506,6 +12505,7 @@ dependencies = [
  "fuzzy",
  "git",
  "gpui",
+ "i18n",
  "language",
  "log",
  "lsp",
@@ -14123,7 +14123,6 @@ dependencies = [
 name = "project_panel"
 version = "0.1.0"
 dependencies = [
- "i18n",
  "anyhow",
  "client",
  "collections",
@@ -14136,6 +14135,7 @@ dependencies = [
  "git_ui",
  "git_ui_core",
  "gpui",
+ "i18n",
  "itertools 0.14.0",
  "language",
  "log",
@@ -16455,13 +16455,13 @@ dependencies = [
 name = "settings"
 version = "0.1.0"
 dependencies = [
- "i18n",
  "anyhow",
  "collections",
  "ec4rs",
  "fs",
  "futures 0.3.34",
  "gpui",
+ "i18n",
  "indoc",
  "inventory",
  "log",
@@ -16549,7 +16549,6 @@ dependencies = [
 name = "settings_ui"
 version = "0.1.0"
 dependencies = [
- "i18n",
  "agent",
  "agent_settings",
  "agent_skills",
@@ -16578,6 +16577,7 @@ dependencies = [
  "heck 0.5.0",
  "http_client",
  "http_proxy",
+ "i18n",
  "itertools 0.14.0",
  "language",
  "language_model",
@@ -18165,7 +18165,6 @@ dependencies = [
 name = "terminal_view"
 version = "0.1.0"
 dependencies = [
- "i18n",
  "anyhow",
  "async-recursion",
  "breadcrumbs",
@@ -18175,6 +18174,7 @@ dependencies = [
  "editor",
  "futures 0.3.34",
  "gpui",
+ "i18n",
  "itertools 0.14.0",
  "language",
  "log",
@@ -18513,7 +18513,6 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 name = "title_bar"
 version = "0.1.0"
 dependencies = [
- "i18n",
  "agent_settings",
  "anyhow",
  "arrayvec",
@@ -18529,6 +18528,7 @@ dependencies = [
  "fs",
  "git_ui_core",
  "gpui",
+ "i18n",
  "icons",
  "livekit_client",
  "menu",
@@ -22073,7 +22073,6 @@ dependencies = [
 name = "workspace"
 version = "0.1.0"
 dependencies = [
- "i18n",
  "agent_settings",
  "any_vec",
  "anyhow",
@@ -22091,6 +22090,7 @@ dependencies = [
  "git",
  "gpui",
  "http_client",
+ "i18n",
  "itertools 0.14.0",
  "language",
  "log",

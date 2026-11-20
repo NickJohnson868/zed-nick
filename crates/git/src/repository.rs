@@ -2606,12 +2606,26 @@ impl GitRepository for RealGitRepository {
             .spawn(async move {
                 let git = git?;
                 if !paths.is_empty() {
-                    let output = git
-                        .build_command(&["update-index", "--add", "--remove", "--"])
+                    let mut process = git
+                        .build_command(&["update-index", "--add", "--remove", "-z", "--stdin"])
                         .envs(env.iter())
-                        .args(paths.iter().map(|p| p.as_unix_str()))
-                        .output()
-                        .await?;
+                        .stdin(Stdio::piped())
+                        .stdout(Stdio::piped())
+                        .stderr(Stdio::piped())
+                        .spawn()?;
+                    let mut stdin = BufWriter::new(
+                        process
+                            .stdin
+                            .take()
+                            .context("git update-index has no stdin")?,
+                    );
+                    for path in &paths {
+                        stdin.write_all(path.as_unix_str().as_bytes()).await?;
+                        stdin.write_all(b"\0").await?;
+                    }
+                    stdin.flush().await?;
+                    drop(stdin);
+                    let output = process.output().await?;
                     anyhow::ensure!(
                         output.status.success(),
                         "Failed to stage paths:\n{}",
@@ -2634,12 +2648,27 @@ impl GitRepository for RealGitRepository {
             .spawn(async move {
                 let git = git?;
                 if !paths.is_empty() {
-                    let output = git
-                        .build_command(&["reset", "--quiet", "--"])
+                    let mut process = git
+                        .build_command(&[
+                            "reset",
+                            "--quiet",
+                            "--pathspec-from-file=-",
+                            "--pathspec-file-nul",
+                        ])
                         .envs(env.iter())
-                        .args(paths.iter().map(|p| p.as_std_path()))
-                        .output()
-                        .await?;
+                        .stdin(Stdio::piped())
+                        .stdout(Stdio::piped())
+                        .stderr(Stdio::piped())
+                        .spawn()?;
+                    let mut stdin =
+                        BufWriter::new(process.stdin.take().context("git reset has no stdin")?);
+                    for path in &paths {
+                        stdin.write_all(path.as_unix_str().as_bytes()).await?;
+                        stdin.write_all(b"\0").await?;
+                    }
+                    stdin.flush().await?;
+                    drop(stdin);
+                    let output = process.output().await?;
 
                     anyhow::ensure!(
                         output.status.success(),
@@ -4318,6 +4347,51 @@ mod tests {
     fn git_init_repo(path: &Path) {
         fs::create_dir_all(path).expect("failed to create repo directory");
         git_command(path, ["init", "-b", "main"]);
+    }
+
+    #[gpui::test]
+    async fn test_stage_and_unstage_many_long_paths(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let repo_dir = tempfile::tempdir().expect("failed to create temporary repository");
+        git_init_repo(repo_dir.path());
+        let directory = repo_dir.path().join("generated");
+        fs::create_dir(&directory).expect("failed to create test directory");
+
+        let mut paths = Vec::new();
+        for index in 0..450 {
+            let relative = format!(
+                "generated/{index:04}-a-long-file-name-that-would-overflow-the-windows-command-line.txt"
+            );
+            fs::write(repo_dir.path().join(&relative), index.to_string())
+                .expect("failed to write test file");
+            paths.push(repo_path(&relative));
+        }
+
+        let repo = RealGitRepository::new(
+            &repo_dir.path().join(".git"),
+            None,
+            Some("git".into()),
+            cx.executor(),
+        )
+        .expect("failed to open repository");
+        repo.stage_paths(paths.clone(), Arc::new(HashMap::default()))
+            .await
+            .expect("failed to stage paths through stdin");
+        assert_eq!(
+            git_command_output(repo_dir.path(), ["diff", "--cached", "--name-only"])
+                .lines()
+                .count(),
+            paths.len()
+        );
+
+        repo.unstage_paths(paths, Arc::new(HashMap::default()))
+            .await
+            .expect("failed to unstage paths through stdin");
+        assert!(
+            git_command_output(repo_dir.path(), ["diff", "--cached", "--name-only"]).is_empty()
+        );
     }
 
     fn clone_remote_repository_with_main_and_feature(temp_dir: &Path) -> (PathBuf, PathBuf) {
