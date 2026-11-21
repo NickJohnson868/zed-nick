@@ -1527,10 +1527,6 @@ pub mod test {
         }
     }
 
-    pub enum TestItemEvent {
-        Edit,
-    }
-
     impl TestProjectItem {
         pub fn new(id: u64, path: &str, cx: &mut App) -> Entity<Self> {
             Self::new_in_worktree(id, path, WorktreeId::from_usize(0), cx)
