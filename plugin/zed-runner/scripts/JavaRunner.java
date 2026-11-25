@@ -10,6 +10,8 @@ import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
+import javax.tools.ToolProvider;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -82,10 +84,6 @@ public class JavaRunner {
         if (main == null || main.isBlank()) throw new IOException("缺少 Java Main 类");
         String mode = System.getenv().getOrDefault("ZED_JAVA_NATIVE_MODE", "hot");
         boolean hot = mode.equals("hot");
-        String relativeTarget = hot ? "target/dev-hot-reload" : "target";
-        Path target = module.resolve(relativeTarget);
-        Path classes = target.resolve("classes");
-        Path classpathFile = target.resolve("native-classpath.txt");
         Path lockDirectory = root.resolve("target/dev-hot-reload");
         Files.createDirectories(lockDirectory);
         String lockName = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(module.toString().getBytes(StandardCharsets.UTF_8)));
@@ -101,19 +99,23 @@ public class JavaRunner {
                 }
                 buildArguments.addAll(List.of("-B", "-DskipTests"));
                 if (hot) buildArguments.add("-Pdev-hot-reload");
-                if (!compile(root, maven, javaHome, buildArguments, relativeTarget, true)) throw new IOException("构建失败，未启动应用");
+                Path modelFile = lockDirectory.resolve("native-model-" + lockName + ".properties");
+                Path extensionDirectory = lockDirectory.resolve("native-extension-" + lockName);
+                Files.createDirectories(extensionDirectory);
+                Path extension = modelExtension(root, maven, javaHome, extensionDirectory);
+                buildArguments.addAll(List.of("-Dmaven.ext.class.path=" + extension,
+                    "-Dzed.runner.module=" + module, "-Dzed.runner.model=" + modelFile));
+                if (!compile(root, maven, javaHome, buildArguments, modelFile)) throw new IOException("构建失败，未启动应用");
                 if (mode.equals("build")) { System.out.println("运行前构建完成。"); return; }
-                List<Path> classpath = new ArrayList<>();
-                classpath.add(classes);
-                for (String entry : Files.readString(classpathFile).trim().split(java.util.regex.Pattern.quote(java.io.File.pathSeparator))) {
-                    if (!entry.isBlank()) classpath.add(Path.of(entry).toRealPath());
-                }
+                Properties model = new Properties();
+                try (var stream = Files.newInputStream(modelFile)) { model.load(stream); }
+                Path classes = Path.of(model.getProperty("output")).toRealPath();
+                Path target = classes.getParent();
+                List<Path> classpath = modelPaths(model, "classpath");
+                List<Path> modules = modelPaths(model, "modules");
                 if (hot && classpath.stream().noneMatch(path -> path.getFileName().toString().startsWith("spring-boot-devtools-"))) {
                     throw new IOException("dev-hot-reload profile 未提供 DevTools");
                 }
-                List<Path> modules = classpath.stream().filter(Files::isDirectory)
-                    .filter(path -> path.endsWith(Path.of("target/dev-hot-reload/classes")))
-                    .map(path -> path.getParent().getParent().getParent()).filter(path -> path.startsWith(root)).distinct().toList();
                 Path trigger = classes.resolve(".dev-reload-trigger");
                 Files.writeString(trigger, UUID.randomUUID().toString());
                 Path classpathJar = target.resolve("native-classpath.jar");
@@ -155,7 +157,7 @@ public class JavaRunner {
                     if (current.equals(stamp)) continue;
                     Thread.sleep(Duration.ofSeconds(1));
                     stamp = snapshot(root, modules);
-                    if (compile(root, maven, javaHome, buildArguments, relativeTarget, false)) {
+                    if (compile(root, maven, javaHome, buildArguments, modelFile)) {
                         Files.writeString(trigger, UUID.randomUUID().toString());
                         System.out.println("编译成功，已通知 DevTools 重启。");
                     } else {
@@ -168,18 +170,23 @@ public class JavaRunner {
         }
     }
 
-    private static boolean compile(Path root, Path maven, Path javaHome, List<String> options, String target, boolean classpath) throws Exception {
+    private static boolean compile(Path root, Path maven, Path javaHome, List<String> options, Path modelFile) throws Exception {
         List<String> command = new ArrayList<>();
         command.add(maven.toString());
         command.addAll(options);
+        Files.deleteIfExists(modelFile);
         command.add("compile");
-        if (classpath) command.addAll(List.of("dependency:build-classpath", "-DincludeScope=runtime",
-            "-Dmdep.outputFile=" + target + "/native-classpath.txt", "-Dmdep.regenerateFile=true"));
+        return executeBuild(root, javaHome, command, null) == 0 && Files.isRegularFile(modelFile);
+    }
+
+    private static int executeBuild(Path root, Path javaHome, List<String> command, Path output) throws Exception {
+        Path maven = Path.of(command.getFirst());
         if (WINDOWS && (maven.toString().endsWith(".cmd") || maven.toString().endsWith(".bat"))) {
             String line = String.join(" ", command.stream().map(value -> "\"" + value + "\"").toList());
             command = List.of(System.getenv().getOrDefault("COMSPEC", "cmd.exe"), "/d", "/s", "/c", "\"" + line + "\"");
         }
         ProcessBuilder builder = new ProcessBuilder(command).directory(root.toFile()).inheritIO();
+        if (output != null) builder.redirectErrorStream(true).redirectOutput(output.toFile());
         builder.environment().put("JAVA_HOME", javaHome.toString());
         String javaBin = javaHome.resolve("bin").toString();
         String pathKey = builder.environment().keySet().stream().filter(key -> key.equalsIgnoreCase("PATH")).findFirst().orElse("PATH");
@@ -187,7 +194,55 @@ public class JavaRunner {
         build = builder.start();
         int result = build.waitFor();
         build = null;
-        return result == 0;
+        return result;
+    }
+
+    private static List<Path> modelPaths(Properties model, String name) throws IOException {
+        List<Path> paths = new ArrayList<>();
+        int count = Integer.parseInt(model.getProperty(name + ".count"));
+        for (int index = 0; index < count; index++) paths.add(Path.of(model.getProperty(name + "." + index)).toRealPath());
+        return paths;
+    }
+
+    private static Path modelExtension(Path root, Path maven, Path javaHome, Path directory) throws Exception {
+        Path versionFile = directory.resolve("native-maven-version.txt");
+        if (executeBuild(root, javaHome, List.of(maven.toString(), "-v"), versionFile) != 0) {
+            throw new IOException("无法确定 Maven 安装目录");
+        }
+        String version = Files.readString(versionFile).replaceAll("\\x1B\\[[0-9;]*m", "");
+        String home = version.lines().filter(line -> line.startsWith("Maven home:"))
+            .map(line -> line.substring("Maven home:".length()).trim()).findFirst()
+            .orElseThrow(() -> new IOException("Maven 未返回安装目录"));
+        List<String> libraries;
+        try (var files = Files.list(Path.of(home).resolve("lib"))) {
+            libraries = files.filter(path -> path.toString().endsWith(".jar")).map(Path::toString).sorted().toList();
+        }
+        Path source = Path.of(System.getProperty("jdk.launcher.sourcefile")).resolveSibling("NativeMavenModel.java");
+        String identity = Files.readString(source) + version;
+        String digest = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(identity.getBytes(StandardCharsets.UTF_8)));
+        Path jarFile = directory.resolve("native-maven-model-" + digest + ".jar");
+        // MVND can keep extension jars open after a build; never overwrite a loaded version.
+        if (Files.isRegularFile(jarFile)) return jarFile;
+        Path classes = directory.resolve("native-maven-extension-classes");
+        Files.createDirectories(classes);
+        var compiler = ToolProvider.getSystemJavaCompiler();
+        if (compiler == null) throw new IOException("运行器需要完整 JDK 编译 Maven 扩展");
+        int result = compiler.run(null, System.out, System.err, "--release", "17", "-encoding", "UTF-8",
+            "-classpath", String.join(java.io.File.pathSeparator, libraries), "-d", classes.toString(), source.toString());
+        if (result != 0) throw new IOException("Maven 模型扩展编译失败");
+        Path temporaryJar = directory.resolve("native-maven-model-" + UUID.randomUUID() + ".tmp");
+        try (var jar = new JarOutputStream(Files.newOutputStream(temporaryJar))) {
+            jar.putNextEntry(new java.util.jar.JarEntry("NativeMavenModel.class"));
+            Files.copy(classes.resolve("NativeMavenModel.class"), jar);
+            jar.closeEntry();
+            jar.putNextEntry(new java.util.jar.JarEntry("META-INF/plexus/components.xml"));
+            jar.write(("<component-set><components><component><role>org.apache.maven.eventspy.EventSpy</role>"
+                + "<role-hint>zed-runner-model</role-hint><implementation>NativeMavenModel</implementation>"
+                + "</component></components></component-set>").getBytes(StandardCharsets.UTF_8));
+            jar.closeEntry();
+        }
+        Files.move(temporaryJar, jarFile);
+        return jarFile;
     }
 
     private static Map<String, String> snapshot(Path root, List<Path> modules) throws Exception {
