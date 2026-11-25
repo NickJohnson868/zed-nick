@@ -91,20 +91,21 @@ public class JavaRunner {
             var lock = channel.tryLock();
             if (lock == null) throw new IOException("该项目已启动热更新，请先停止原进程");
             try (lock) {
-                List<String> buildArguments = new ArrayList<>();
-                if (Files.isRegularFile(root.resolve("pom.xml")) && !module.equals(root)) {
-                    buildArguments.addAll(List.of("-f", root.resolve("pom.xml").toString(), "-pl", root.relativize(module).toString().replace('\\', '/'), "-am"));
-                } else {
-                    buildArguments.addAll(List.of("-f", module.resolve("pom.xml").toString()));
-                }
-                buildArguments.addAll(List.of("-B", "-DskipTests"));
-                if (hot) buildArguments.add("-Pdev-hot-reload");
+                List<String> options = new ArrayList<>(List.of("-B", "-DskipTests"));
+                if (hot) options.add("-Pdev-hot-reload");
                 Path modelFile = lockDirectory.resolve("native-model-" + lockName + ".properties");
                 Path extensionDirectory = lockDirectory.resolve("native-extension-" + lockName);
                 Files.createDirectories(extensionDirectory);
                 Path extension = modelExtension(root, maven, javaHome, extensionDirectory);
-                buildArguments.addAll(List.of("-Dmaven.ext.class.path=" + extension,
+                options.addAll(List.of("-Dmaven.ext.class.path=" + extension,
                     "-Dzed.runner.module=" + module, "-Dzed.runner.model=" + modelFile));
+                Path buildRoot = findBuildRoot(root, module, maven, javaHome, options, modelFile);
+                List<String> buildArguments = new ArrayList<>(options);
+                buildArguments.addAll(List.of("-f", buildRoot.resolve("pom.xml").toString()));
+                if (!module.equals(buildRoot)) {
+                    buildArguments.addAll(List.of("-pl", buildRoot.relativize(module).toString().replace('\\', '/'), "-am"));
+                }
+                System.out.println("Maven 构建入口：" + buildRoot.resolve("pom.xml"));
                 if (!compile(root, maven, javaHome, buildArguments, modelFile)) throw new IOException("构建失败，未启动应用");
                 if (mode.equals("build")) { System.out.println("运行前构建完成。"); return; }
                 Properties model = new Properties();
@@ -170,6 +171,32 @@ public class JavaRunner {
         }
     }
 
+    private static Path findBuildRoot(Path root, Path module, Path maven, Path javaHome,
+                                      List<String> options, Path modelFile) throws Exception {
+        var candidates = new ArrayList<Path>();
+        for (Path parent = module.getParent(); parent != null && parent.startsWith(root); parent = parent.getParent()) {
+            if (Files.isRegularFile(parent.resolve("pom.xml"))) candidates.addFirst(parent);
+        }
+        // Maven's active reactor, not POM inheritance or directory ancestry, defines aggregation.
+        for (Path candidate : candidates) {
+            Files.deleteIfExists(modelFile);
+            var command = new ArrayList<String>();
+            command.add(maven.toString());
+            command.addAll(options);
+            command.addAll(List.of("-f", candidate.resolve("pom.xml").toString(),
+                "-Dzed.runner.discover=true", "validate"));
+            if (executeBuild(root, javaHome, command, null) != 0 || !Files.isRegularFile(modelFile)) {
+                throw new IOException("无法解析 Maven 聚合关系：" + candidate.resolve("pom.xml"));
+            }
+            var model = new Properties();
+            try (var stream = Files.newInputStream(modelFile)) { model.load(stream); }
+            String membership = model.getProperty("contains.module");
+            if ("true".equals(membership)) return candidate;
+            if (!"false".equals(membership)) throw new IOException("Maven 聚合模型缺少目标模块状态");
+        }
+        return module;
+    }
+
     private static boolean compile(Path root, Path maven, Path javaHome, List<String> options, Path modelFile) throws Exception {
         List<String> command = new ArrayList<>();
         command.add(maven.toString());
@@ -181,6 +208,15 @@ public class JavaRunner {
 
     private static int executeBuild(Path root, Path javaHome, List<String> command, Path output) throws Exception {
         Path maven = Path.of(command.getFirst());
+        boolean windowsMvnd = WINDOWS && (maven.getFileName().toString().equalsIgnoreCase("mvnd.exe")
+            || maven.getFileName().toString().equalsIgnoreCase("mvnd.cmd"));
+        if (windowsMvnd) {
+            // The native MVND client loses Unicode arguments on Windows; use its Java client.
+            maven = maven.resolveSibling("mvnd.cmd");
+            if (!Files.isRegularFile(maven)) throw new IOException("MVND 缺少 Java 客户端启动器：" + maven);
+            command = new ArrayList<>(command);
+            command.set(0, maven.toString());
+        }
         if (WINDOWS && (maven.toString().endsWith(".cmd") || maven.toString().endsWith(".bat"))) {
             String line = String.join(" ", command.stream().map(value -> "\"" + value + "\"").toList());
             command = List.of(System.getenv().getOrDefault("COMSPEC", "cmd.exe"), "/d", "/s", "/c", "\"" + line + "\"");
@@ -188,6 +224,7 @@ public class JavaRunner {
         ProcessBuilder builder = new ProcessBuilder(command).directory(root.toFile()).inheritIO();
         if (output != null) builder.redirectErrorStream(true).redirectOutput(output.toFile());
         builder.environment().put("JAVA_HOME", javaHome.toString());
+        if (windowsMvnd) builder.environment().put("MVND_CLIENT", "jvm");
         String javaBin = javaHome.resolve("bin").toString();
         String pathKey = builder.environment().keySet().stream().filter(key -> key.equalsIgnoreCase("PATH")).findFirst().orElse("PATH");
         builder.environment().put(pathKey, javaBin + java.io.File.pathSeparator + builder.environment().getOrDefault(pathKey, ""));

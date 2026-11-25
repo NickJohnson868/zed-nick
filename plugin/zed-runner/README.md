@@ -23,6 +23,10 @@ Git 项目以 git ls-files --cached --others --exclude-standard 为扫描范围�
 
 每个主类只显示一个“Java · 主类”入口。Java 运行环境的 `hot_reload: true` 启用热更新，`false` 或未配置时普通运行；原生 Java 插件在每次启动时读取该开关，修改开关无需重新扫描。项目需提供 dev-hot-reload Maven profile，启动模块提供 DevTools。原生 Java 插件调用 scripts/JavaRunner.java，只使用项目必需的 JDK 和 Maven。运行器用当前 Maven 的 API 编译模型扩展，在 `compile` 完成后读取 Maven 实际解析的模块、运行依赖和输出目录；内部模块直接使用编译目录，外部依赖使用解析后的文件，不执行 `package`、`install` 或 `dependency:build-classpath`。自定义输出目录以 Maven 模型为准。
 
+工作区根目录与 Maven 聚合根分别处理：支持根目录聚合、子目录聚合、多层目录及多个独立工程。启动时沿目标模块的上级目录收集 POM 候选，用当前 Maven 和相同 profile 执行 `validate`，由 Maven 模型确认目标是否属于该 reactor；继承父 POM 或目录相邻不代表聚合关系。选中真正包含入口模块的最外层聚合工程后，使用 `-pl` 与 `-am` 编译入口及其依赖；没有聚合关系时按独立模块构建。模型解析失败直接报告，不使用旧仓库 JAR 掩盖解析错误。此处参考 [IntelliJ IDEA 的 MavenProjectsTree](https://github.com/JetBrains/intellij-community/blob/master/plugins/maven/src/main/java/org/jetbrains/idea/maven/project/MavenProjectsTree.kt) 对聚合关系和继承关系的分别管理，具体关系仍交给 Maven 解析。
+
+路径使用原生参数列表传递。Windows 的 MVND 使用其随附的 `mvnd.cmd` 并选择 Java 客户端，避免原生客户端损坏中文参数，同时保留 Maven 自身的环境和配置处理；不修改用户构建工具配置。
+
 保存后自动编译，成功才更新 DevTools 重启触发文件；编译失败时保留进程，修正并保存后重试。监听包含实际依赖模块，即使该模块不在入口扫描白名单内。修改 POM/依赖后重新运行入口；删除、移动类后先停止，再用同一 profile clean 后启动。
 
 热更新会重建 Spring 上下文，定时任务、消费者和连接也会重新初始化，期间请求可能短暂中断。仅使用开发环境；Ctrl+C 停止本次启动的进程。

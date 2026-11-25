@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 import zipfile
+from urllib.parse import unquote
 
 PLUGIN = Path(__file__).resolve().parents[1]
 
@@ -57,12 +58,20 @@ def check_install(root):
             raise AssertionError("Installer overwrote a development link")
 
 
-def check_reactor(root):
+def check_reactor(root, layout="flat"):
     java_home = Path(os.environ["JAVA_HOME"])
     java = java_home / ("bin/java.exe" if os.name == "nt" else "bin/java")
     maven = shutil.which("mvnd") or shutil.which("mvn")
-    project = root / "reactor project"
-    group = "native.reactor." + root.name.replace("-", "")
+    workspace = root / ("reactor " + layout + " 中文 ' space")
+    project = workspace if layout == "flat" else workspace / "application-root"
+    if layout == "deep":
+        project = workspace / "projects/java/backend/application-root"
+    if layout in {"unrelated-parent", "independent"}:
+        workspace.mkdir(parents=True)
+        other = workspace if layout == "unrelated-parent" else workspace / "other-project"
+        other.mkdir(exist_ok=True)
+        (other / "pom.xml").write_text('<project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>native.unrelated</groupId><artifactId>unrelated</artifactId><version>1</version><packaging>pom</packaging></project>')
+    group = "native.reactor." + root.name.replace("-", "") + "." + layout.replace("-", "")
     for module in ["library", "application"]:
         (project / module / "src/main/java").mkdir(parents=True)
     (project / "pom.xml").write_text(f'''<project xmlns="http://maven.apache.org/POM/4.0.0">
@@ -77,17 +86,17 @@ def check_reactor(root):
 <parent><groupId>{group}</groupId><artifactId>reactor</artifactId><version>1</version></parent><artifactId>{module}</artifactId>{dependency}</project>''')
     (project / "library/src/main/java/Library.java").write_text('public class Library { public static String value() { return "REACTOR_OK"; } }')
     (project / "application/src/main/java/Main.java").write_text('public class Main { public static void main(String[] args) { System.out.println(Library.value()); } }')
-    env = dict(os.environ, ZED_JAVA_NATIVE_ROOT=str(project), ZED_JAVA_NATIVE_MODULE=str(project / "application"),
+    env = dict(os.environ, ZED_JAVA_NATIVE_ROOT=str(workspace), ZED_JAVA_NATIVE_MODULE=str(project / "application"),
         ZED_JAVA_NATIVE_MAVEN=maven, ZED_JAVA_NATIVE_MAIN="Main", ZED_JAVA_NATIVE_MODE="run", ZED_JAVA_NATIVE_VM_ARGS="", ZED_JAVA_NATIVE_ARGS="")
     for attempt in range(2):
-        result = subprocess.run([str(java), str(PLUGIN / "scripts/JavaRunner.java")], env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=240)
+        result = subprocess.run([str(java), "-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8", str(PLUGIN / "scripts/JavaRunner.java")], env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=240)
         assert result.returncode == 0, result.stdout[-4000:] + result.stderr[-2000:]
         assert "REACTOR_OK" in result.stdout
         assert not list(project.rglob("library-1.jar"))
         assert not list(project.rglob("application-1.jar"))
     with zipfile.ZipFile(project / "application/build-output/native-classpath.jar") as jar:
         manifest = jar.read("META-INF/MANIFEST.MF").decode().replace("\r\n ", "")
-    assert (project / "library/build-output/compiled").as_uri() + "/" in manifest, manifest
+    assert unquote((project / "library/build-output/compiled").as_uri()) + "/" in unquote(manifest), manifest
     assert not (Path.home() / ".m2/repository" / group.replace(".", "/")).exists()
 
 
@@ -168,10 +177,12 @@ public class Main {
 
 
 if __name__ == "__main__":
-    with tempfile.TemporaryDirectory(prefix="zed-native-") as directory:
+    # MVND keeps extension JAR handles until its daemon exits on Windows.
+    with tempfile.TemporaryDirectory(prefix="zed-native-", ignore_cleanup_errors=os.name == "nt") as directory:
         root = Path(directory).resolve()
         check_install(root)
         check_python(root)
-        check_reactor(root)
+        for layout in ("flat", "nested", "deep", "unrelated-parent", "independent"):
+            check_reactor(root, layout)
         check_java(root)
     print("PASS: native Java run/arguments/reload/failure recovery, Python environment and installer layout")

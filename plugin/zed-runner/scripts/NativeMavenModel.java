@@ -24,6 +24,14 @@ public final class NativeMavenModel extends AbstractEventSpy {
             projects.put(key(project.getArtifact()), project);
             if (project.getBasedir().toPath().toRealPath().equals(Path.of(module).toRealPath())) selected = project;
         }
+        if (Boolean.parseBoolean(session.getUserProperties().getProperty("zed.runner.discover"))) {
+            var model = new Properties();
+            model.setProperty("contains.module", Boolean.toString(selected != null));
+            try (var stream = Files.newOutputStream(Path.of(destination))) {
+                model.store(stream, "Maven resolved reactor membership");
+            }
+            return;
+        }
         if (selected == null) throw new IllegalStateException("Startup module is absent from Maven reactor");
         var classpath = new LinkedHashSet<Path>();
         var modules = new LinkedHashSet<Path>();
