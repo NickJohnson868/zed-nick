@@ -7,6 +7,9 @@ import org.apache.maven.artifact.Artifact;
 import org.apache.maven.eventspy.AbstractEventSpy;
 import org.apache.maven.execution.ExecutionEvent;
 import org.apache.maven.project.MavenProject;
+import org.apache.maven.project.DefaultDependencyResolutionRequest;
+import org.apache.maven.project.ProjectDependenciesResolver;
+import org.eclipse.aether.util.filter.DependencyFilterUtils;
 
 /** Exports Maven's resolved reactor model without resolving packaged reactor artifacts. */
 public final class NativeMavenModel extends AbstractEventSpy {
@@ -38,14 +41,18 @@ public final class NativeMavenModel extends AbstractEventSpy {
         Path output = Path.of(selected.getBuild().getOutputDirectory()).toRealPath();
         classpath.add(output);
         modules.add(selected.getBasedir().toPath().toRealPath());
-        for (Artifact artifact : selected.getArtifacts()) {
-            if (!"compile".equals(artifact.getScope()) && !"runtime".equals(artifact.getScope())) continue;
-            MavenProject project = projects.get(key(artifact));
+        var request = new DefaultDependencyResolutionRequest(selected, session.getRepositorySession());
+        request.setResolutionFilter(DependencyFilterUtils.classpathFilter("runtime"));
+        var dependencies = session.getContainer().lookup(ProjectDependenciesResolver.class).resolve(request);
+        for (var dependency : dependencies.getResolvedDependencies()) {
+            var artifact = dependency.getArtifact();
+            MavenProject project = projects.get(artifact.getGroupId() + ":" + artifact.getArtifactId() + ":"
+                + artifact.getVersion() + ":" + artifact.getExtension() + ":" + artifact.getClassifier());
             if (project != null) {
                 classpath.add(Path.of(project.getBuild().getOutputDirectory()).toRealPath());
                 modules.add(project.getBasedir().toPath().toRealPath());
             } else {
-                if (artifact.getFile() == null) throw new IllegalStateException("Unresolved dependency: " + artifact.getId());
+                if (artifact.getFile() == null) throw new IllegalStateException("Unresolved dependency: " + artifact);
                 classpath.add(artifact.getFile().toPath().toRealPath());
             }
         }

@@ -21,7 +21,7 @@ Git 项目以 git ls-files --cached --others --exclude-standard 为扫描范围�
 
 ## Spring Boot 开发热更新
 
-每个主类只显示一个“Java · 主类”入口。Java 运行环境的 `hot_reload: true` 启用热更新，`false` 或未配置时普通运行；原生 Java 插件在每次启动时读取该开关，修改开关无需重新扫描。项目需提供 dev-hot-reload Maven profile，启动模块提供 DevTools。原生 Java 插件调用 scripts/JavaRunner.java，只使用项目必需的 JDK 和 Maven。运行器用当前 Maven 的 API 编译模型扩展，在 `compile` 完成后读取 Maven 实际解析的模块、运行依赖和输出目录；内部模块直接使用编译目录，外部依赖使用解析后的文件，不执行 `package`、`install` 或 `dependency:build-classpath`。自定义输出目录以 Maven 模型为准。
+每个主类只显示一个“Java · 主类”入口。Java 运行环境的 `hot_reload: true` 启用热更新，`false` 或未配置时普通运行；原生 Java 插件在每次启动时读取该开关，修改开关无需重新扫描。项目需提供 dev-hot-reload Maven profile，启动模块提供 DevTools。原生 Java 插件调用 scripts/JavaRunner.java，只使用项目必需的 JDK 和 Maven。运行器用当前 Maven 的 API 编译模型扩展，在 `compile` 完成后读取 Maven 实际解析的模块、运行依赖和输出目录；运行依赖通过 Maven 的 `ProjectDependenciesResolver` 按 runtime 类路径解析完整传递依赖，不从 compile 阶段的已解析依赖集合推断。内部模块直接使用编译目录，外部依赖使用解析后的文件，不执行 `package`、`install` 或 `dependency:build-classpath`。自定义输出目录以 Maven 模型为准。
 
 工作区根目录与 Maven 聚合根分别处理：支持根目录聚合、子目录聚合、多层目录及多个独立工程。启动时沿目标模块的上级目录收集 POM 候选，用当前 Maven 和相同 profile 执行 `validate`，由 Maven 模型确认目标是否属于该 reactor；继承父 POM 或目录相邻不代表聚合关系。选中真正包含入口模块的最外层聚合工程后，使用 `-pl` 与 `-am` 编译入口及其依赖；没有聚合关系时按独立模块构建。模型解析失败直接报告，不使用旧仓库 JAR 掩盖解析错误。此处参考 [IntelliJ IDEA 的 MavenProjectsTree](https://github.com/JetBrains/intellij-community/blob/master/plugins/maven/src/main/java/org/jetbrains/idea/maven/project/MavenProjectsTree.kt) 对聚合关系和继承关系的分别管理，具体关系仍交给 Maven 解析。
 
