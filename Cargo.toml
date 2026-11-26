@@ -1175,9 +1175,10 @@ zed = { codegen-units = 16 }
 
 [profile.release-fast]
 inherits = "release"
-debug = "full"
+debug = 0
 lto = false
 codegen-units = 16
+strip = "symbols"
 
 [workspace.lints.cargo]
 # Production-only dependencies appear unused in test-support builds.

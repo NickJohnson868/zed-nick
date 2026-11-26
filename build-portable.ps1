@@ -258,6 +258,21 @@ portable-data 内预装插件，首次启动后将配置和数据保存在程序
         }
     }
     Write-Host "绿色 ZIP 已生成：$archivePath" -ForegroundColor Green
+
+    $historyDirectory = Join-Path $PSScriptRoot '.local-build/history'
+    if (Test-Path -LiteralPath $historyDirectory -PathType Container) {
+        $historyRetention = 2
+        $snapshots = @(Get-ChildItem -LiteralPath $historyDirectory -Directory -Force |
+            Where-Object { $_.Name -like '.local-*' } |
+            Sort-Object LastWriteTime -Descending)
+        $stale = @($snapshots | Select-Object -Skip $historyRetention)
+        foreach ($snapshot in $stale) {
+            Remove-Item -LiteralPath $snapshot.FullName -Recurse -Force
+        }
+        if ($stale.Count) {
+            Write-Host "已清理 $($stale.Count) 份历史构建快照（保留最近 $historyRetention 份）。" -ForegroundColor Cyan
+        }
+    }
 } finally {
     $buildProcess.PriorityClass = $previousPriority
     Set-Location -LiteralPath $previousLocation
